@@ -1,0 +1,52 @@
+# API
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.34,<1.0
+python-multipart>=0.0.20,<1.0
+
+# Settings and schemas
+pydantic>=2.10,<3.0
+pydantic-settings>=2.7,<3.0
+python-dotenv>=1.0,<2.0
+
+# RAG frameworks
+langchain>=0.3,<1.0
+langchain-community>=0.3,<1.0
+langchain-openai>=0.3,<1.0
+langchain-chroma>=0.2,<1.0
+langchain-pinecone>=0.2,<1.0
+llama-index>=0.12,<1.0
+llama-index-embeddings-openai>=0.3,<1.0
+llama-index-vector-stores-chroma>=0.4,<1.0
+llama-index-vector-stores-pinecone>=0.4,<1.0
+
+# Vector stores
+chromadb>=0.6,<1.0
+pinecone>=5.4,<8.0
+
+# LLM and tokenization
+openai>=1.58,<2.0
+tiktoken>=0.8,<1.0
+
+# Document parsing
+pypdf>=5.1,<7.0
+pymupdf>=1.25,<2.0
+python-docx>=1.1,<2.0
+docx2txt>=0.8,<1.0
+pillow>=12.0,<13.0
+pytesseract>=0.3.13,<1.0
+beautifulsoup4>=4.12,<5.0
+lxml>=5.3,<7.0
+trafilatura>=2.0,<3.0
+requests>=2.32,<3.0
+
+# Retrieval quality
+rank-bm25>=0.2,<1.0
+rapidfuzz>=3.11,<4.0
+
+# Observability and reliability
+structlog>=24.4,<26.0
+tenacity>=9.0,<10.0
+
+# Testing
+pytest>=8.3,<10.0
+httpx>=0.28,<1.0
