@@ -1,25 +1,43 @@
 # RAG Chatbot
 
-Production-oriented RAG chatbot scaffold for personal documents.
+Hệ thống RAG chatbot cho tài liệu cá nhân, đang được xây từng bước theo hướng production-ready.
 
-## Current Scope
+Hiện tại project đã có:
 
-- FastAPI application factory
-- Environment-based configuration
-- Health check endpoint
-- Base schemas for documents and chat
-- Service folders for ingestion, embeddings, vector stores, retrieval, and generation
+- FastAPI app skeleton.
+- Loader cho `PDF`, `DOCX`, `TXT`, `MD`, HTML URL và image OCR.
+- OCR bằng Tesseract, hỗ trợ tiếng Việt.
+- Chunking pipeline có metadata, content type, section context, parent-child chunks và quality report.
+- Retrieval evaluation baseline với Recall@K, MRR và Citation Accuracy.
 
-## Setup
+## Cài Đặt
 
 ```powershell
-python -m venv .venv
+cd D:\RAG-chatbot
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+Nếu chưa có `.env`:
+
+```powershell
 Copy-Item .env.example .env
 ```
 
-## Run
+OCR image cần Tesseract:
+
+```env
+TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
+OCR_LANGUAGES="eng+vie"
+```
+
+Kiểm tra Tesseract:
+
+```powershell
+tesseract --list-langs
+```
+
+## Chạy API
 
 ```powershell
 uvicorn app.main:app --reload
@@ -28,62 +46,61 @@ uvicorn app.main:app --reload
 Health check:
 
 ```text
-GET /api/v1/health
+GET http://127.0.0.1:8000/api/v1/health
 ```
 
-## Next Step
+## Chạy Test
 
-Implement text chunking so loaded documents can be split into retrievable chunks before embedding and storing in a vector database.
-
-## Document Loaders
-
-The ingestion layer exposes a single service:
-
-```python
-from app.services.ingestion import DocumentLoaderService, LoaderInput
-
-documents = DocumentLoaderService().load(
-    LoaderInput(
-        source="data/raw/example.pdf",
-        title="Optional title",
-        user_id="optional-user-id",
-    )
-)
+```powershell
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-Supported inputs:
+## In Thử Chunks
 
-- Local text files: `.txt`
-- Local markdown files: `.md`
-- Local PDF files: `.pdf`
-- Local Word files: `.docx`
-- HTML pages: `http://...` or `https://...`
-- OCR images: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp`, `.gif`, `.webp`
+In chunks từ PDF mẫu:
 
-Each loader returns a list of `Document` objects with normalized text and metadata:
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe scripts\print_chunks.py --limit 3
+```
 
-- `document_id`
-- `document_type`
-- `source`
-- `title`
-- `page_number` for PDF pages
-- `user_id`
-- `mime_type`
-- `ingested_at`
+Chạy với file khác:
 
-### OCR Setup
+```powershell
+.\.venv\Scripts\python.exe scripts\print_chunks.py path\to\file.pdf --limit 5
+```
 
-Image OCR uses `pytesseract`, which is only the Python wrapper. Install the Tesseract OCR executable separately.
+In thử parent chunks:
 
-On Windows, install Tesseract and set the executable path in `.env` if it is not on `PATH`:
+```powershell
+.\.venv\Scripts\python.exe scripts\print_chunks.py --parents --level parent --limit 2
+```
+
+## Đánh Giá Retrieval Baseline
+
+Chạy lexical baseline trên bộ câu hỏi mẫu:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe scripts\evaluate_retrieval.py --k 5
+```
+
+## Cấu Trúc Chính
 
 ```text
-TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
-OCR_LANGUAGES="eng"
+app/
+  api/
+  core/
+  schemas/
+  services/
+    ingestion/
+    chunking/
+    evaluation/
+scripts/
+tests/
+data/
 ```
 
-For Vietnamese OCR, install the Vietnamese trained data and use:
+## Bước Tiếp Theo
 
-```text
-OCR_LANGUAGES="eng+vie"
-```
+Xây dựng embedding pipeline và ChromaDB local vector store từ output `DocumentChunk`.
