@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     ocr_languages: str = "eng"
     http_timeout_seconds: float = 20.0
     http_user_agent: str = "rag-chatbot/0.1.0"
+    openai_api_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
