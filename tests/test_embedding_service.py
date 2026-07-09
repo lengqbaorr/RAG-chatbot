@@ -217,6 +217,12 @@ class TestEmbeddingService:
         assert result.report.embedded_count == 0
         assert provider.call_count == 0
 
+    def test_embed_query(self, service, provider):
+        vector = service.embed_query("What is RAG?")
+
+        assert len(vector) == 4
+        assert provider.call_count == 1
+
     def test_report_fields(self, service):
         chunks = [_make_chunk("c1"), _make_chunk("c2")]
         result = service.embed_chunks(chunks)

@@ -82,6 +82,13 @@ class EmbeddingService:
 
         return EmbeddingBatchResult(chunks=all_embedded, report=report)
 
+    def embed_query(self, text: str) -> list[float]:
+        if not text.strip():
+            raise ValueError("query text must not be empty")
+        vector = self._provider.embed_query(text)
+        self._validator.validate_query_vector(vector, self._config.dimension)
+        return vector
+
     def _build_inputs(
         self, chunks: list[DocumentChunk]
     ) -> list[EmbeddingInput]:

@@ -8,12 +8,26 @@ from app.services.vectorstore.models import (
     VectorStoreStats,
     VectorStoreUpsertResult,
 )
-from app.services.vectorstore.providers import ChromaVectorStore, ChromaVectorStoreError
 from app.services.vectorstore.service import VectorStoreService
 from app.services.vectorstore.validators import (
     VectorStoreValidationError,
     VectorStoreValidator,
 )
+
+
+def __getattr__(name: str):
+    if name in {"ChromaVectorStore", "ChromaVectorStoreError"}:
+        from app.services.vectorstore.providers.chroma_store import (
+            ChromaVectorStore,
+            ChromaVectorStoreError,
+        )
+
+        return {
+            "ChromaVectorStore": ChromaVectorStore,
+            "ChromaVectorStoreError": ChromaVectorStoreError,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BaseVectorStore",

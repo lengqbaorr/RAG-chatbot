@@ -1,5 +1,4 @@
 import pytest
-from chromadb import EphemeralClient
 
 from app.services.vectorstore.filters import ChromaFilterBuilder
 from app.services.vectorstore.models import VectorRecord
@@ -7,10 +6,10 @@ from app.services.vectorstore.providers.chroma_store import ChromaVectorStore
 
 
 @pytest.fixture
-def store():
+def store(tmp_path):
     return ChromaVectorStore(
         collection_name="test_collection",
-        persist_directory="./data/chroma_test",
+        persist_directory=str(tmp_path / "chroma_test"),
         embedding_dimension=4,
         distance_metric="cosine",
     )

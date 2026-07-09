@@ -1,11 +1,37 @@
+# Environment and secrets
 .env
+.env.*
+!.env.example
+
+# Virtualenv and Python cache
 .venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
+
+# Local data, uploads, vector DBs, and embedding caches
+data/chroma*/
+data/*chroma*/
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db-journal
+data/*.sqlite3-journal
 data/raw/*
 data/processed/*
+data/test_uploads/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/.gitkeep
+!data/evaluation/
+!data/evaluation/*.jsonl
+
+# Personal documents should not be pushed by default
+*.pdf
+*.docx
+*.doc
+*.pptx
+*.xlsx

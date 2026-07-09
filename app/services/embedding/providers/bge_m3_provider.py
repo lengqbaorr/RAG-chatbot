@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 
 from sentence_transformers import SentenceTransformer
 
@@ -18,10 +17,14 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
         model_name: str = "BAAI/bge-m3",
         device: str = "cpu",
         batch_size: int = 64,
+        cache_folder: str | None = None,
+        local_files_only: bool = False,
     ) -> None:
         self._model_name = model_name
         self._device = device
         self._batch_size = batch_size
+        self._cache_folder = cache_folder
+        self._local_files_only = local_files_only
         self._model: SentenceTransformer | None = None
 
     @property
@@ -39,11 +42,24 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
     def _get_model(self) -> SentenceTransformer:
         if self._model is None:
             logger.info("Loading BGE-M3 model: %s (device=%s)", self._model_name, self._device)
-            self._model = SentenceTransformer(
-                self._model_name,
-                device=self._device,
-            )
+            try:
+                self._model = SentenceTransformer(
+                    self._model_name,
+                    device=self._device,
+                    cache_folder=self._cache_folder,
+                    local_files_only=self._local_files_only,
+                )
+            except Exception as exc:
+                mode = "local cache only" if self._local_files_only else "local cache or Hugging Face"
+                raise BGEM3EmbeddingError(
+                    f"Could not load embedding model '{self._model_name}' using {mode}. "
+                    "Run scripts/preload_embedding_model.py once to cache the model locally."
+                ) from exc
         return self._model
+
+    def preload(self) -> int:
+        model = self._get_model()
+        return model.get_embedding_dimension()
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         model = self._get_model()

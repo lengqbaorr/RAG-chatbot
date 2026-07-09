@@ -8,18 +8,37 @@ from app.services.embedding.models import (
     EmbeddingInput,
     EmbeddingReport,
 )
-from app.services.embedding.providers import (
-    BGEM3EmbeddingError,
-    BGEM3EmbeddingProvider,
-    OpenAIEmbeddingError,
-    OpenAIEmbeddingProvider,
-)
 from app.services.embedding.service import EmbeddingService
 from app.services.embedding.text_builder import EmbeddingTextBuilder
 from app.services.embedding.validator import (
     EmbeddingValidationError,
     EmbeddingValidator,
 )
+
+
+def __getattr__(name: str):
+    if name in {"BGEM3EmbeddingError", "BGEM3EmbeddingProvider"}:
+        from app.services.embedding.providers.bge_m3_provider import (
+            BGEM3EmbeddingError,
+            BGEM3EmbeddingProvider,
+        )
+
+        return {
+            "BGEM3EmbeddingError": BGEM3EmbeddingError,
+            "BGEM3EmbeddingProvider": BGEM3EmbeddingProvider,
+        }[name]
+    if name in {"OpenAIEmbeddingError", "OpenAIEmbeddingProvider"}:
+        from app.services.embedding.providers.openai_provider import (
+            OpenAIEmbeddingError,
+            OpenAIEmbeddingProvider,
+        )
+
+        return {
+            "OpenAIEmbeddingError": OpenAIEmbeddingError,
+            "OpenAIEmbeddingProvider": OpenAIEmbeddingProvider,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BGEM3EmbeddingError",

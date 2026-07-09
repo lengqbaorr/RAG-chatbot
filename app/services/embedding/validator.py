@@ -9,6 +9,13 @@ class EmbeddingValidationError(Exception):
 
 
 class EmbeddingValidator:
+    def validate_query_vector(
+        self,
+        vector: list[float],
+        expected_dimension: int,
+    ) -> None:
+        self._validate_vector(vector, expected_dimension, 0)
+
     def validate_batch(
         self,
         vectors: list[list[float]],
