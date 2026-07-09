@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import argparse
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -41,9 +42,9 @@ class MockLLMProvider(BaseLLMProvider):
         del request
         return LLMResponse(
             text=(
-                "Bông tuyết Koch được xây dựng bằng cách chia mỗi đoạn thẳng "
-                "thành ba phần, dựng tam giác đều ở đoạn giữa, bỏ cạnh đáy, "
-                "rồi lặp lại quy trình này đệ quy. [Source 1]"
+                "Vector Space Model biểu diễn tài liệu và truy vấn thành các vector "
+                "trong không gian nhiều chiều, sau đó đo độ tương đồng giữa chúng, "
+                "thường bằng cosine similarity. [Source 1]"
             ),
             model=self.default_model,
             provider=self.provider_name,
@@ -54,31 +55,32 @@ class MockLLMProvider(BaseLLMProvider):
 
     def stream(self, request: LLMRequest) -> Iterator[str]:
         del request
-        yield "Bông tuyết Koch được xây dựng bằng quy trình đệ quy. [Source 1]"
+        yield "Vector Space Model biểu diễn văn bản thành vector. [Source 1]"
 
 
 class MockRetrieverService:
     def retrieve(self, query: str, **kwargs) -> RetrievalResult:
         del kwargs
         chunk = RetrievedChunk(
-            chunk_id="parent-koch",
-            document_id="doc-fractal",
-            source_id="src-fractal",
+            chunk_id="parent-vsm",
+            document_id="doc-vsm",
+            source_id="src-vsm",
             content=(
-                "Bông tuyết Koch được tạo bằng cách chia mỗi đoạn thẳng thành ba phần, "
-                "dựng tam giác đều ở đoạn giữa, loại bỏ cạnh đáy và lặp lại đệ quy."
+                "Vector Space Model biểu diễn tài liệu và truy vấn dưới dạng vector. "
+                "Mỗi chiều có thể là một thuật ngữ, trọng số có thể dựa trên TF-IDF, "
+                "và độ tương đồng thường được tính bằng cosine similarity."
             ),
-            metadata={"content_hash": "hash-parent-koch"},
+            metadata={"content_hash": "hash-parent-vsm"},
             score=0.91,
             distance=0.09,
             rank=1,
-            source_name="23520108_23520383_23521714.pdf",
+            source_name="Test.pdf",
             source_type="pdf",
-            page_start=2,
-            page_end=4,
-            section_title="2.1. Bông tuyết Koch",
-            header_path=["2.1. Bông tuyết Koch"],
-            header_path_text="2.1. Bông tuyết Koch",
+            page_start=8,
+            page_end=11,
+            section_title="Vector Space Model",
+            header_path=["Vector Space Model"],
+            header_path_text="Vector Space Model",
             content_type="body",
             chunk_level="parent",
             retrieval_strategy="parent_child",
@@ -114,8 +116,15 @@ class MockRetrieverService:
         )
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Demo RAG Answer Pipeline with mock services.")
+    parser.add_argument("--query", default="Vector Space Model là gì?")
+    return parser.parse_args()
+
+
 def main() -> None:
-    question = "Bông tuyết Koch được xây dựng như thế nào?"
+    args = parse_args()
+    question = args.query
     llm_service = LLMService(
         config=LLMConfig(provider="mock", model="mock-rag-model"),
         providers={"mock": MockLLMProvider()},
@@ -147,3 +156,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

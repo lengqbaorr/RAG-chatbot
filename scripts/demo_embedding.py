@@ -85,7 +85,7 @@ def demo_real_pdf() -> None:
     print("=" * 55)
 
     docs = DocumentLoaderService().load(
-        LoaderInput(source="23520108_23520383_23521714.pdf")
+        LoaderInput(source="Test.pdf")
     )
     print(f"  loaded: {len(docs)} pages")
 
@@ -139,3 +139,4 @@ def demo_real_pdf() -> None:
 if __name__ == "__main__":
     demo_mock()
     demo_real_pdf()
+

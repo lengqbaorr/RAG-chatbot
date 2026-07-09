@@ -221,8 +221,8 @@ def test_gemini_provider_can_be_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     calls: list[dict] = []
 
-    def fake_post(url, params, json, timeout):
-        calls.append({"url": url, "params": params, "json": json, "timeout": timeout})
+    def fake_post(url, headers, json, timeout):
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
         return FakeResponse(payload)
 
     monkeypatch.setattr("app.services.llm.providers.gemini_provider.requests.post", fake_post)
@@ -242,8 +242,33 @@ def test_gemini_provider_can_be_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert response.text == "Trả lời [Source 1]."
     assert response.usage.total_tokens == 19
-    assert calls[0]["params"] == {"key": "test-key"}
+    assert calls[0]["headers"] == {"x-goog-api-key": "test-key"}
     assert calls[0]["json"]["systemInstruction"]["parts"][0]["text"] == "System"
+
+
+def test_gemini_provider_retries_transient_http_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "candidates": [{"content": {"parts": [{"text": "OK"}]}, "finishReason": "STOP"}],
+    }
+    calls = {"count": 0}
+
+    def fake_post(url, headers, json, timeout):
+        del url, headers, json, timeout
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return FakeResponse({"error": {"code": 503}}, status_code=503)
+        return FakeResponse(payload)
+
+    monkeypatch.setattr("app.services.llm.providers.gemini_provider.requests.post", fake_post)
+    monkeypatch.setattr("app.services.llm.providers.gemini_provider.wait_exponential", lambda **kwargs: None)
+    provider = GeminiProvider(api_key="test-key", timeout_seconds=5)
+
+    response = provider.generate(
+        LLMRequest(messages=[LLMMessage(role="user", content="Question")], model="gemini-test")
+    )
+
+    assert response.text == "OK"
+    assert calls["count"] == 2
 
 
 def test_citation_builder_creates_citations() -> None:

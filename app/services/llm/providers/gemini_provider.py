@@ -20,6 +20,10 @@ class GeminiProviderError(Exception):
     pass
 
 
+class GeminiTransientError(GeminiProviderError):
+    pass
+
+
 class GeminiProvider(BaseLLMProvider):
     def __init__(
         self,
@@ -60,15 +64,15 @@ class GeminiProvider(BaseLLMProvider):
         raise NotImplementedError("Gemini streaming is not implemented in the baseline provider")
 
     @retry(
-        retry=retry_if_exception_type((requests.RequestException, GeminiProviderError)),
+        retry=retry_if_exception_type((requests.ConnectionError, requests.Timeout, GeminiTransientError)),
         wait=wait_exponential(multiplier=1, min=1, max=8),
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(5),
         reraise=True,
     )
     def _post(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = requests.post(
             url,
-            params={"key": self._api_key},
+            headers={"x-goog-api-key": self._api_key or ""},
             json=payload,
             timeout=self._timeout_seconds,
         )
@@ -76,7 +80,10 @@ class GeminiProvider(BaseLLMProvider):
             response.raise_for_status()
         except requests.HTTPError as exc:
             logger.error("Gemini request failed: %s", response.text[:1000])
-            raise GeminiProviderError("Gemini request failed") from exc
+            status = response.status_code
+            if status in {429, 500, 502, 503, 504}:
+                raise GeminiTransientError(f"Gemini transient request failure with HTTP {status}") from None
+            raise GeminiProviderError(f"Gemini request failed with HTTP {status}") from None
         return response.json()
 
     def _build_payload(self, request: LLMRequest) -> dict[str, Any]:

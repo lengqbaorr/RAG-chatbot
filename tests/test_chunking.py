@@ -357,7 +357,7 @@ def test_chunk_documents_can_include_parent_chunks() -> None:
 
 
 def test_real_pdf_file_can_be_chunked() -> None:
-    source = Path("23520108_23520383_23521714.pdf")
+    source = Path("Test.pdf")
     if not source.exists():
         pytest.skip("real PDF sample is not available")
 
@@ -366,10 +366,13 @@ def test_real_pdf_file_can_be_chunked() -> None:
         config=ChunkingConfig(chunk_size_tokens=450, chunk_overlap_tokens=60)
     ).chunk_documents(documents)
 
-    assert len(documents) == 23
-    assert len(chunks) >= 23
+    assert len(documents) >= 1
+    assert len(chunks) >= len(documents)
     assert all(chunk.metadata.source_type == DocumentType.pdf for chunk in chunks)
     assert all(chunk.metadata.page_start is not None for chunk in chunks)
     assert all(chunk.metadata.page_end is not None for chunk in chunks)
     assert all(chunk.metadata.parent_id for chunk in chunks)
-    assert ChunkQualityReporter().build(chunks).suspected_formula_headings == 0
+    report = ChunkQualityReporter().build(chunks)
+    assert report.empty_chunks == 0
+    assert report.duplicate_chunks == 0
+

@@ -1,187 +1,158 @@
 # RAG Chatbot
 
-Hệ thống RAG chatbot cho tài liệu cá nhân, đang được xây từng bước theo hướng production-ready.
-
-Hiện tại project đã có:
-
-- FastAPI API layer cho health, chat, upload và document management.
-- Loader cho `PDF`, `DOCX`, `TXT`, `MD`, HTML URL và image OCR.
-- OCR bằng Tesseract, hỗ trợ tiếng Việt.
-- Chunking pipeline có metadata, content type, section context, parent-child chunks và quality report.
-- Retriever layer có dense retrieval và parent-child retrieval baseline.
-- RAG answer pipeline với ContextBuilder, PromptBuilder, LLMService và citations.
-- Retrieval evaluation baseline với Recall@K, MRR và Citation Accuracy.
+Bản ngắn gọn các lệnh chạy chính. Các script chi tiết đã được gom vào `scripts/rag_cli.py`.
 
 ## Cài Đặt
 
 ```powershell
 cd D:\RAG-chatbot
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Nếu chưa có `.env`:
+Nếu muốn cài đúng version đã khóa:
+
+```powershell
+pip install -r requirements.lock
+```
+
+Cài Tesseract OCR:
+
+```powershell
+winget install UB-Mannheim.TesseractOCR
+tesseract --version
+tesseract --list-langs
+```
+
+Tạo `.env`:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-OCR image cần Tesseract:
+`.env` tối thiểu:
 
 ```env
+GEMINI_API_KEY=your_key_here
+EMBEDDING_LOCAL_FILES_ONLY=true
 TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
 OCR_LANGUAGES="eng+vie"
+CHROMA_PATH=./data/chroma
+CHROMA_COLLECTION=personal_docs_bge_m3_1024
 ```
 
-Kiểm tra Tesseract:
+## Lệnh Chính
+
+Xem toàn bộ CLI:
 
 ```powershell
-tesseract --list-langs
+.\.venv\Scripts\python.exe scripts\rag_cli.py --help
 ```
 
-## Chạy API
+Preload model:
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe scripts\rag_cli.py preload
 ```
 
-Health check:
+Kiểm tra đã cache model local:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py preload --local-files-only
+```
+
+In chunk và kiểm tra embedding:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py inspect --source Test.pdf --local-files-only
+```
+
+Chạy demo mock nhanh:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py demo
+```
+
+Chạy demo thật end-to-end:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py demo --real --source Test.pdf --query "Vector Space Model là gì?" --local-files-only
+```
+
+Index và chạy evaluation:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py eval --index --source Test.pdf --dataset data\evaluation\test_data.jsonl --local-files-only --no-cache
+```
+
+Chạy API:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py api --port 8000
+```
+
+Chạy test:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py test -q
+```
+
+Kiểm tra port:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rag_cli.py ports --port 8000
+```
+
+## API Nhanh
+
+Health:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Swagger:
 
 ```text
-GET http://127.0.0.1:8000/health
-GET http://127.0.0.1:8000/health/ready
+http://127.0.0.1:8000/docs
+```
+
+Upload:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/documents/upload" `
+  -F "file=@Test.pdf"
 ```
 
 Chat:
 
 ```powershell
+$body = @{
+  question = "Vector Space Model là gì?"
+  strategy = "parent_child"
+  top_k = 3
+  fetch_k = 10
+  min_score = 0.70
+  filters = @{ source_type = "pdf" }
+} | ConvertTo-Json -Depth 5
+
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8000/chat" `
   -ContentType "application/json" `
-  -Body '{"question":"Bông tuyết Koch được xây dựng như thế nào?","strategy":"parent_child","top_k":3,"min_score":0.78,"filters":{"source_type":"pdf"}}'
+  -Body $body
 ```
 
-Upload tài liệu:
+## Help Theo Nhóm
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/documents/upload" `
-  -F "file=@23520108_23520383_23521714.pdf"
+.\.venv\Scripts\python.exe scripts\rag_cli.py preload --help
+.\.venv\Scripts\python.exe scripts\rag_cli.py inspect --help
+.\.venv\Scripts\python.exe scripts\rag_cli.py demo --help
+.\.venv\Scripts\python.exe scripts\rag_cli.py eval --help
+.\.venv\Scripts\python.exe scripts\rag_cli.py api --help
+.\.venv\Scripts\python.exe scripts\rag_cli.py test --help
 ```
 
-Các route cũng được mount dưới `/api/v1` để tương thích ngược.
-
-## Chạy Test
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-```
-
-## In Thử Chunks
-
-In chunks từ PDF mẫu:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\print_chunks.py --limit 3
-```
-
-Chạy với file khác:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\print_chunks.py path\to\file.pdf --limit 5
-```
-
-In thử parent chunks:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\print_chunks.py --parents --level parent --limit 2
-```
-
-## Đánh Giá Retrieval Baseline
-
-Chạy lexical baseline trên bộ câu hỏi mẫu:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\evaluate_retrieval.py --k 5
-```
-
-## Demo Retriever
-
-Chạy nhanh với mock services:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\demo_retriever.py
-```
-
-Preload BGE-M3 một lần để cache weight local:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\preload_embedding_model.py
-```
-
-Kiểm tra model đã có sẵn trong local cache:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\preload_embedding_model.py --local-files-only
-```
-
-Chạy end-to-end với PDF mẫu, BGE-M3 và ChromaDB:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\demo_retriever.py --real --min-score 0.78 --local-files-only
-```
-
-## Demo RAG Answer Pipeline
-
-Chạy offline với mock retriever và mock LLM:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\demo_rag.py
-```
-
-Chạy thật end-to-end với PDF mẫu, BGE-M3, ChromaDB và Gemini:
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'
-.\.venv\Scripts\python.exe scripts\demo_rag_real.py --provider gemini --min-score 0.78 --local-files-only
-```
-
-Các biến `.env` chính cho LLM provider:
-
-```env
-GEMINI_API_KEY=
-OPENROUTER_API_KEY=
-OLLAMA_BASE_URL="http://localhost:11434"
-OLLAMA_MODEL="qwen3:8b"
-```
-
-## Cấu Trúc Chính
-
-```text
-app/
-  api/
-  core/
-  schemas/
-  services/
-    ingestion/
-    chunking/
-    evaluation/
-    llm/
-    rag/
-    retrieval/
-scripts/
-tests/
-data/
-```
-
-## Bước Tiếp Theo
-
-Xây dựng embedding pipeline và ChromaDB local vector store từ output `DocumentChunk`.

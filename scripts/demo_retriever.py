@@ -36,39 +36,39 @@ class MockEmbeddingService:
 class MockVectorStore(BaseVectorStore):
     def __init__(self) -> None:
         self.records = {
-            "parent-koch": self._record(
-                "parent-koch",
+            "parent-vsm": self._record(
+                "parent-vsm",
                 content=(
-                    "Parent context: Bông tuyết Koch được tạo bằng cách chia mỗi "
-                    "đoạn thẳng thành ba phần, dựng tam giác đều ở đoạn giữa, "
-                    "rồi loại bỏ cạnh đáy. Quá trình này được lặp đệ quy."
+                    "Parent context: Vector Space Model biểu diễn tài liệu và truy vấn "
+                    "dưới dạng vector trong không gian nhiều chiều. Độ tương đồng giữa "
+                    "truy vấn và tài liệu thường được tính bằng cosine similarity."
                 ),
-                page_start=2,
-                page_end=4,
-                section_title="2.1. Bông tuyết Koch",
+                page_start=8,
+                page_end=11,
+                section_title="Vector Space Model",
             )
         }
         self.results = [
             self._result(
-                "child-koch-1",
+                "child-vsm-1",
                 score=0.86,
-                parent_id="parent-koch",
+                parent_id="parent-vsm",
                 content=(
-                    "Bông tuyết Koch được xây dựng bằng cách chia đoạn thẳng "
-                    "thành ba phần, dựng tam giác đều và lặp lại đệ quy."
+                    "Vector Space Model là mô hình biểu diễn văn bản thành vector, "
+                    "trong đó mỗi chiều thường tương ứng với một thuật ngữ."
                 ),
-                page_start=2,
-                page_end=2,
-                section_title="2.1.2. Quy trình xây dựng",
+                page_start=8,
+                page_end=8,
+                section_title="Vector Space Model",
             ),
             self._result(
-                "child-koch-2",
+                "child-vsm-2",
                 score=0.81,
-                parent_id="parent-koch",
-                content="Thuật toán Koch gọi đệ quy để sinh các điểm chi tiết của fractal.",
-                page_start=4,
-                page_end=4,
-                section_title="2.1.4. Xây dựng thuật toán",
+                parent_id="parent-vsm",
+                content="Cosine similarity được dùng để đo mức độ tương đồng giữa vector truy vấn và vector tài liệu.",
+                page_start=10,
+                page_end=10,
+                section_title="Độ tương đồng cosine",
             ),
             self._result(
                 "child-cover",
@@ -80,13 +80,13 @@ class MockVectorStore(BaseVectorStore):
                 section_title="Trang bìa",
             ),
             self._result(
-                "child-minkowski",
+                "child-lsa",
                 score=0.55,
-                parent_id="parent-minkowski",
-                content="Đảo Minkowski là một cấu trúc fractal hình học.",
-                page_start=5,
-                page_end=5,
-                section_title="2.2. Đảo Minkowski",
+                parent_id="parent-lsa",
+                content="Latent Semantic Analysis dùng phân rã ma trận để giảm chiều và khai thác quan hệ ngữ nghĩa tiềm ẩn.",
+                page_start=12,
+                page_end=12,
+                section_title="Latent Semantic Analysis",
             ),
         ]
 
@@ -163,7 +163,7 @@ class MockVectorStore(BaseVectorStore):
             metadata={"content_hash": f"hash-{chunk_id}"},
             score=score,
             distance=1.0 - score,
-            source_name="mock_fractal.pdf",
+            source_name="mock_vector_space.pdf",
             source_type="pdf",
             page_start=page_start,
             page_end=page_end,
@@ -198,7 +198,7 @@ class MockVectorStore(BaseVectorStore):
             embedding_text="",
             vector=[0.1, 0.2, 0.3, 0.4],
             metadata={"content_hash": f"hash-{chunk_id}"},
-            source_name="mock_fractal.pdf",
+            source_name="mock_vector_space.pdf",
             source_type="pdf",
             page_start=page_start,
             page_end=page_end,
@@ -207,7 +207,7 @@ class MockVectorStore(BaseVectorStore):
             header_path_text=section_title,
             content_type="body",
             chunk_level="parent",
-            child_ids=["child-koch-1", "child-koch-2"],
+            child_ids=["child-vsm-1", "child-vsm-2"],
             embedding_provider="mock",
             embedding_model="mock",
             embedding_dimension=4,
@@ -225,12 +225,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--source",
-        default="23520108_23520383_23521714.pdf",
+        default="Test.pdf",
         help="Document path for --real mode.",
     )
     parser.add_argument(
         "--query",
-        default="Bông tuyết Koch được xây dựng như thế nào?",
+        default="Vector Space Model là gì?",
         help="Query to retrieve.",
     )
     parser.add_argument("--top-k", type=int, default=3)
@@ -429,3 +429,4 @@ def print_result(title: str, result) -> None:
 
 if __name__ == "__main__":
     main()
+

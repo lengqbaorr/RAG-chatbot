@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "source",
         nargs="?",
-        default="23520108_23520383_23521714.pdf",
+        default="Test.pdf",
         help="Document path or URL to evaluate.",
     )
     parser.add_argument(
@@ -88,3 +88,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

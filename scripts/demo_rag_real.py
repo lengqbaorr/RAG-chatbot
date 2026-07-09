@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -24,6 +25,7 @@ from app.services.llm import LLMConfig, LLMService
 from app.services.rag import AnswerGenerator, RAGPipeline, RAGPipelineConfig
 from app.services.retrieval import ParentChildRetrievalConfig, RetrievalConfig, RetrievalService
 from app.services.vectorstore import ChromaVectorStore, VectorStoreConfig, VectorStoreService
+from app.services.llm.providers.gemini_provider import GeminiProviderError
 
 
 DEFAULT_MODELS = {
@@ -37,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Real end-to-end RAG demo: PDF -> BGE-M3 -> Chroma -> Retriever -> LLM."
     )
-    parser.add_argument("--source", default="23520108_23520383_23521714.pdf")
+    parser.add_argument("--source", default="Test.pdf")
     parser.add_argument(
         "--query",
         default="Bông tuyết Koch được xây dựng như thế nào?",
@@ -162,7 +164,17 @@ def main() -> None:
     print(f"min_score: {args.min_score}")
 
     print("\n[5] Generate answer")
-    result = pipeline.answer(args.query)
+    try:
+        logging.getLogger("app.services.llm.service").setLevel(logging.CRITICAL)
+        result = pipeline.answer(args.query)
+    except GeminiProviderError as exc:
+        print()
+        print(f"LLM error: {exc}")
+        print("Gemini is unavailable or overloaded. Try again later, or use another model.")
+        print("Examples:")
+        print("  --model gemini-2.5-flash-lite")
+        print("  --model gemini-flash-latest")
+        raise SystemExit(1) from None
 
     print("\nanswer:")
     print(result.answer)
@@ -184,3 +196,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

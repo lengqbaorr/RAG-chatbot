@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "source",
         nargs="?",
-        default="23520108_23520383_23521714.pdf",
+        default="Test.pdf",
         help="Path or URL to load. Defaults to the sample PDF in the project root.",
     )
     parser.add_argument("--chunk-size", type=int, default=450)
@@ -94,3 +94,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

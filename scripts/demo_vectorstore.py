@@ -28,7 +28,7 @@ def main() -> None:
     print("\n[1] Load PDF & chunk")
     print("-" * 40)
     docs = DocumentLoaderService().load(
-        LoaderInput(source="23520108_23520383_23521714.pdf")
+        LoaderInput(source="Test.pdf")
     )
     chunks = DocumentChunker(
         config=ChunkingConfig(chunk_size_tokens=300, chunk_overlap_tokens=40),
@@ -158,3 +158,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

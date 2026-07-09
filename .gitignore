@@ -23,6 +23,7 @@ data/*.sqlite3-journal
 data/raw/*
 data/processed/*
 data/test_uploads/
+data/hf_cache/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/.gitkeep
