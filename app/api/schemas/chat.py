@@ -29,6 +29,10 @@ class ChatReportResponse(BaseModel):
     context_sources: int
     llm_provider: str | None = None
     llm_model: str | None = None
+    llm_finish_reason: str | None = None
+    llm_prompt_tokens: int | None = None
+    llm_completion_tokens: int | None = None
+    llm_total_tokens: int | None = None
     total_latency: float
 
 

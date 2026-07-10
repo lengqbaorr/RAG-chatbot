@@ -27,8 +27,6 @@ data/hf_cache/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/.gitkeep
-!data/evaluation/
-!data/evaluation/*.jsonl
 
 # Personal documents should not be pushed by default
 *.pdf
@@ -36,3 +34,13 @@ data/hf_cache/
 *.doc
 *.pptx
 *.xlsx
+
+# Frontend artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

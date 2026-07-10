@@ -5,11 +5,12 @@ from typing import BinaryIO
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_document_service, get_indexing_service, get_rag_pipeline
+from app.api.dependencies import get_document_service, get_indexing_service, get_job_service, get_rag_pipeline
 from app.core.exceptions import DocumentNotFoundError
 from app.main import app
-from app.services.documents import DocumentDeleteReport, DocumentInfo
+from app.services.document import DocumentDeleteReport, DocumentInfo
 from app.services.indexing import IndexingConfig, IndexingReport, IndexingService
+from app.services.indexing.models import UploadSubmission
 from app.services.llm.models import LLMUsage
 from app.services.rag.models import Citation, RAGAnswer, RAGReport
 from app.services.retrieval.models import RetrievalReport
@@ -57,6 +58,14 @@ class FakeRAGPipeline:
 
 
 class FakeIndexingService:
+    def submit_upload(self, *, filename: str, file_obj: BinaryIO, mime_type: str | None = None):
+        del file_obj, mime_type
+        return UploadSubmission(job_id="job-1", source_id="src-1", status="RUNNING")
+
+    def submit_url(self, *, url: str, title: str | None = None, owner: str | None = None):
+        del url, title, owner
+        return UploadSubmission(job_id="job-url-1", source_id="src-url-1", status="RUNNING")
+
     def index_upload(self, *, filename: str, file_obj: BinaryIO) -> IndexingReport:
         del file_obj
         return IndexingReport(
@@ -90,7 +99,41 @@ class FakeDocumentService:
     def delete_document(self, source_id: str) -> DocumentDeleteReport:
         if source_id != "src-1":
             raise DocumentNotFoundError(f"Document not found: {source_id}")
-        return DocumentDeleteReport(source_id=source_id, deleted_count=30)
+        return DocumentDeleteReport(
+            source_id=source_id,
+            deleted_vectors=30,
+            deleted_chunks=30,
+            raw_file_deleted=True,
+        )
+
+
+class FakeJob:
+    def __init__(self, job_id: str = "job-1") -> None:
+        from datetime import datetime
+        from app.services.jobs import JobStage, JobStatus
+
+        self.job_id = job_id
+        self.source_id = "src-1"
+        self.status = JobStatus.running
+        self.progress = 40
+        self.current_stage = JobStage.chunking
+        self.error_message = None
+        self.created_at = datetime(2026, 1, 1)
+        self.updated_at = datetime(2026, 1, 1)
+        self.started_at = datetime(2026, 1, 1)
+        self.finished_at = None
+
+
+class FakeJobService:
+    def get_job(self, job_id: str):
+        if job_id != "job-1":
+            from app.services.jobs import JobNotFoundError
+
+            raise JobNotFoundError(f"Job not found: {job_id}")
+        return FakeJob(job_id)
+
+    def list_jobs(self):
+        return [FakeJob()]
 
 
 class DummyLoader:
@@ -150,7 +193,49 @@ def test_upload_document_with_mock_indexing_service() -> None:
 
     assert response.status_code == 200
     assert response.json()["source_id"] == "src-1"
-    assert response.json()["upserted"] == 30
+    assert response.json()["job_id"] == "job-1"
+    assert response.json()["status"] == "RUNNING"
+
+
+def test_upload_url_with_mock_indexing_service() -> None:
+    app.dependency_overrides[get_indexing_service] = lambda: FakeIndexingService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/documents/url",
+        json={"url": "https://example.com/article", "title": "Example article"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source_id"] == "src-url-1"
+    assert response.json()["job_id"] == "job-url-1"
+
+
+def test_upload_image_is_allowed_for_ocr(tmp_path) -> None:
+    service = _invalid_upload_service(max_upload_mb=1, upload_dir=str(tmp_path))
+    app.dependency_overrides[get_indexing_service] = lambda: service
+    client = TestClient(app)
+
+    response = client.post(
+        "/documents/upload",
+        files={"file": ("scan.png", b"fake image bytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+
+
+def test_job_api_with_mock_job_service() -> None:
+    app.dependency_overrides[get_job_service] = lambda: FakeJobService()
+    client = TestClient(app)
+
+    detail = client.get("/jobs/job-1")
+    listing = client.get("/jobs")
+
+    assert detail.status_code == 200
+    assert detail.json()["job_id"] == "job-1"
+    assert detail.json()["progress"] == 40
+    assert listing.status_code == 200
+    assert listing.json()["jobs"][0]["source_id"] == "src-1"
 
 
 def test_upload_rejects_unsupported_extension(tmp_path) -> None:
@@ -188,7 +273,10 @@ def test_delete_document_by_source_id() -> None:
     response = client.delete("/documents/src-1")
 
     assert response.status_code == 200
-    assert response.json() == {"source_id": "src-1", "deleted_count": 30}
+    body = response.json()
+    assert body["source_id"] == "src-1"
+    assert body["deleted_count"] == 30
+    assert body["deleted_vectors"] == 30
 
 
 def test_document_not_found_error_mapping() -> None:
@@ -210,7 +298,7 @@ def _invalid_upload_service(*, max_upload_mb: int, upload_dir: str) -> IndexingS
         config=IndexingConfig(
             upload_dir=upload_dir,
             max_upload_mb=max_upload_mb,
-            allowed_extensions=("pdf", "docx", "txt", "md"),
+            allowed_extensions=("pdf", "docx", "txt", "md", "png", "jpg", "jpeg"),
         ),
     )
 

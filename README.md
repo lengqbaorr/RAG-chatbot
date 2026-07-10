@@ -1,8 +1,10 @@
 # RAG Chatbot
 
-Bản ngắn gọn các lệnh chạy chính. Các script chi tiết đã được gom vào `scripts/rag_cli.py`.
+FastAPI backend + React frontend cho hệ thống RAG cá nhân.
 
-## Cài Đặt
+Input hỗ trợ: PDF, DOCX, TXT, Markdown, URL/HTML và ảnh OCR (`png`, `jpg`, `jpeg`, `bmp`, `gif`, `tif`, `tiff`, `webp`).
+
+## 1. Cài Backend
 
 ```powershell
 cd D:\RAG-chatbot
@@ -10,104 +12,64 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Nếu muốn cài đúng version đã khóa:
-
-```powershell
-pip install -r requirements.lock
-```
-
-Cài Tesseract OCR:
-
-```powershell
-winget install UB-Mannheim.TesseractOCR
-tesseract --version
-tesseract --list-langs
-```
-
-Tạo `.env`:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-`.env` tối thiểu:
+Cập nhật `.env`:
 
 ```env
 GEMINI_API_KEY=your_key_here
-EMBEDDING_LOCAL_FILES_ONLY=true
+LLM_MAX_TOKENS=2048
 TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
 OCR_LANGUAGES="eng+vie"
-CHROMA_PATH=./data/chroma
-CHROMA_COLLECTION=personal_docs_bge_m3_1024
 ```
 
-## Lệnh Chính
-
-Xem toàn bộ CLI:
+Cài Tesseract nếu chưa có:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py --help
+winget install UB-Mannheim.TesseractOCR
 ```
 
-Preload model:
+## 2. Cài Frontend
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py preload
+cd D:\RAG-chatbot\frontend
+npm install
+Copy-Item .env.example .env
 ```
 
-Kiểm tra đã cache model local:
+`frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+## 3. Chạy Chương Trình
+
+Terminal 1, chạy backend:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py preload --local-files-only
+cd D:\RAG-chatbot
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-In chunk và kiểm tra embedding:
+Terminal 2, chạy frontend:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py inspect --source Test.pdf --local-files-only
+cd D:\RAG-chatbot\frontend
+npm run dev
 ```
 
-Chạy demo mock nhanh:
+Mở trình duyệt:
 
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py demo
+```text
+http://127.0.0.1:5173
 ```
 
-Chạy demo thật end-to-end:
+## 4. Kiểm Tra Nhanh
 
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py demo --real --source Test.pdf --query "Vector Space Model là gì?" --local-files-only
-```
-
-Index và chạy evaluation:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py eval --index --source Test.pdf --dataset data\evaluation\test_data.jsonl --local-files-only --no-cache
-```
-
-Chạy API:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py api --port 8000
-```
-
-Chạy test:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py test -q
-```
-
-Kiểm tra port:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py ports --port 8000
-```
-
-## API Nhanh
-
-Health:
+Backend health:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
@@ -119,40 +81,14 @@ Swagger:
 http://127.0.0.1:8000/docs
 ```
 
-Upload:
+## 5. Build/Test
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/documents/upload" `
-  -F "file=@Test.pdf"
+cd D:\RAG-chatbot
+.\.venv\Scripts\python.exe -m pytest -q
 ```
-
-Chat:
 
 ```powershell
-$body = @{
-  question = "Vector Space Model là gì?"
-  strategy = "parent_child"
-  top_k = 3
-  fetch_k = 10
-  min_score = 0.70
-  filters = @{ source_type = "pdf" }
-} | ConvertTo-Json -Depth 5
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/chat" `
-  -ContentType "application/json" `
-  -Body $body
+cd D:\RAG-chatbot\frontend
+npm run build
 ```
-
-## Help Theo Nhóm
-
-```powershell
-.\.venv\Scripts\python.exe scripts\rag_cli.py preload --help
-.\.venv\Scripts\python.exe scripts\rag_cli.py inspect --help
-.\.venv\Scripts\python.exe scripts\rag_cli.py demo --help
-.\.venv\Scripts\python.exe scripts\rag_cli.py eval --help
-.\.venv\Scripts\python.exe scripts\rag_cli.py api --help
-.\.venv\Scripts\python.exe scripts\rag_cli.py test --help
-```
-

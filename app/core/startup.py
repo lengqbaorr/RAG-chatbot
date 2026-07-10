@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
+from app.db import Database
 from app.core.config import Settings, settings
 from app.services.chunking import ChunkingConfig, DocumentChunker
 from app.services.embedding import (
@@ -15,18 +16,30 @@ from app.services.embedding import (
     SQLiteEmbeddingCache,
 )
 from app.services.health import HealthService
-from app.services.indexing import IndexingConfig, IndexingService
+from app.services.indexing import (
+    InMemoryIndexingQueue,
+    IndexingConfig,
+    IndexingPipeline,
+    IndexingService,
+    ThreadedIndexingWorker,
+)
 from app.services.ingestion import DocumentLoaderService
+from app.services.document import DocumentRepository, DocumentService
+from app.services.jobs import JobRepository, JobService
 from app.services.llm import LLMConfig, LLMService
 from app.services.rag import AnswerGenerator, RAGPipeline, RAGPipelineConfig
 from app.services.retrieval import ParentChildRetrievalConfig, RetrievalConfig, RetrievalService
 from app.services.vectorstore import ChromaVectorStore, VectorStoreConfig, VectorStoreService
-from app.services.documents import DocumentManagementService
 
 
 def build_services(app: FastAPI, config: Settings = settings) -> None:
     Path(config.upload_dir).mkdir(parents=True, exist_ok=True)
     Path(config.chroma_path).mkdir(parents=True, exist_ok=True)
+    database = Database(config.metadata_db_path)
+    database.initialize()
+    document_repository = DocumentRepository(database)
+    job_repository = JobRepository(database)
+    job_service = JobService(job_repository)
 
     embedding_provider = BGEM3EmbeddingProvider(
         model_name=config.embedding_model,
@@ -103,7 +116,8 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
         for ext in config.allowed_upload_extensions.split(",")
         if ext.strip()
     )
-    indexing_service = IndexingService(
+    queue = InMemoryIndexingQueue()
+    indexing_pipeline = IndexingPipeline(
         loader=DocumentLoaderService(),
         chunker=DocumentChunker(
             config=ChunkingConfig(
@@ -114,19 +128,41 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
         ),
         embedding_service=embedding_service,
         vector_store_service=vector_store_service,
+        document_repository=document_repository,
+        job_service=job_service,
+    )
+    indexing_service = IndexingService(
+        document_repository=document_repository,
+        job_service=job_service,
+        queue=queue,
         config=IndexingConfig(
             upload_dir=config.upload_dir,
             max_upload_mb=config.max_upload_mb,
             allowed_extensions=allowed,
+            duplicate_policy=config.duplicate_policy,
         ),
     )
-    document_service = DocumentManagementService(vector_store=vector_store)
+    indexing_worker = ThreadedIndexingWorker(
+        queue=queue,
+        pipeline=indexing_pipeline,
+        job_service=job_service,
+        document_repository=document_repository,
+    )
+    indexing_worker.start()
+    document_service = DocumentService(repository=document_repository, vector_store=vector_store)
     health_service = HealthService(
         vector_store=vector_store,
         llm_service=llm_service,
         embedding_service=embedding_service,
+        database=database,
+        job_service=job_service,
+        upload_dir=config.upload_dir,
     )
 
+    app.state.database = database
+    app.state.document_repository = document_repository
+    app.state.job_repository = job_repository
+    app.state.job_service = job_service
     app.state.embedding_service = embedding_service
     app.state.vector_store = vector_store
     app.state.vector_store_service = vector_store_service
@@ -134,6 +170,7 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     app.state.llm_service = llm_service
     app.state.rag_pipeline = rag_pipeline
     app.state.indexing_service = indexing_service
+    app.state.indexing_worker = indexing_worker
     app.state.document_service = document_service
     app.state.health_service = health_service
 
@@ -142,4 +179,9 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.disable_startup:
         build_services(app, settings)
-    yield
+    try:
+        yield
+    finally:
+        worker = getattr(app.state, "indexing_worker", None)
+        if worker is not None:
+            worker.stop()

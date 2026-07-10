@@ -53,7 +53,8 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
                 mode = "local cache only" if self._local_files_only else "local cache or Hugging Face"
                 raise BGEM3EmbeddingError(
                     f"Could not load embedding model '{self._model_name}' using {mode}. "
-                    "Run scripts/preload_embedding_model.py once to cache the model locally."
+                    "Set EMBEDDING_LOCAL_FILES_ONLY=false to allow the first online download, "
+                    "then set it back to true for offline startup."
                 ) from exc
         return self._model
 

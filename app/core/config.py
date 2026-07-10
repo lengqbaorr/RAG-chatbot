@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     chroma_path: str = "./data/chroma"
     chroma_collection: str = "personal_docs_bge_m3_1024"
+    metadata_db_path: str = "./data/metadata.db"
     embedding_provider: str = "bge-m3"
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimension: int = 1024
@@ -24,14 +25,17 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 2048
     upload_dir: str = "./data/raw"
     max_upload_mb: int = 50
-    allowed_upload_extensions: str = "pdf,docx,txt,md"
+    allowed_upload_extensions: str = "pdf,docx,txt,md,png,jpg,jpeg,bmp,gif,tif,tiff,webp"
+    duplicate_policy: str = "skip"
     default_retrieval_strategy: str = "parent_child"
     default_top_k: int = 3
     default_fetch_k: int = 10
     default_min_score: float = 0.78
+    cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
+    cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     disable_startup: bool = False
 
     model_config = SettingsConfigDict(

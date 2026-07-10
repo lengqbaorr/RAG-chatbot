@@ -60,6 +60,10 @@ class AnswerGenerator:
             llm_provider=response.provider,
             llm_model=response.model,
             llm_latency=response.latency,
+            llm_finish_reason=response.finish_reason,
+            llm_prompt_tokens=response.usage.prompt_tokens,
+            llm_completion_tokens=response.usage.completion_tokens,
+            llm_total_tokens=response.usage.total_tokens,
             total_latency=latency,
         )
         return RAGAnswer(

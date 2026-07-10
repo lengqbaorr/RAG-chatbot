@@ -1,0 +1,136 @@
+import { Check, FileText, X } from "lucide-react";
+
+import { Button } from "@/components/common/Button";
+import { EmptyState } from "@/components/common/EmptyState";
+import { Spinner } from "@/components/common/Spinner";
+import { StatusPill } from "@/components/common/StatusPill";
+import { useDocuments } from "@/hooks/useDocuments";
+import { useChatStore } from "@/store/chatStore";
+import { cn } from "@/utils/cn";
+
+export function CitationPanel() {
+  const {
+    activeSource,
+    selectedSourceIds,
+    setActiveSource,
+    setSelectedSourceIds,
+    toggleSelectedSource,
+  } = useChatStore();
+  const documents = useDocuments();
+  const completedDocuments = documents.data?.documents.filter((document) => document.status === "COMPLETED") ?? [];
+  const allCompletedSelected =
+    completedDocuments.length > 0 && completedDocuments.every((document) => selectedSourceIds.includes(document.source_id));
+
+  const toggleAll = () => {
+    setSelectedSourceIds(allCompletedSelected ? [] : completedDocuments.map((document) => document.source_id));
+  };
+
+  return (
+    <aside className="hidden w-96 border-l border-border bg-card xl:flex xl:flex-col">
+      <div className="border-b border-border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Sources</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tick tài liệu muốn dùng cho câu hỏi.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={toggleAll} disabled={!completedDocuments.length}>
+            {allCompletedSelected ? "Clear" : "All"}
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-4">
+        {documents.isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner /> Loading sources
+          </div>
+        ) : null}
+
+        {documents.isError ? (
+          <EmptyState title="Cannot load sources" description={documents.error.message} />
+        ) : null}
+
+        {!documents.isLoading && !documents.isError && !documents.data?.documents.length ? (
+          <EmptyState title="No documents" description="Upload tài liệu ở trang Documents để chọn source chat." />
+        ) : null}
+
+        <div className="space-y-2">
+          {documents.data?.documents.map((document) => {
+            const completed = document.status === "COMPLETED";
+            const checked = selectedSourceIds.includes(document.source_id);
+            return (
+              <label
+                key={document.source_id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition",
+                  checked ? "bg-muted" : "bg-background hover:bg-muted",
+                  !completed && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border",
+                    checked && "border-primary bg-primary text-primary-foreground",
+                  )}
+                >
+                  {checked ? <Check className="h-3.5 w-3.5" /> : null}
+                </span>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={checked}
+                  disabled={!completed}
+                  onChange={() => toggleSelectedSource(document.source_id)}
+                />
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{document.source_name}</span>
+                  <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    {document.chunk_count} chunks
+                    <StatusPill status={document.status} />
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 border-t border-border pt-4">
+          {!activeSource ? (
+            <p className="text-sm text-muted-foreground">
+              Click citation trong câu trả lời để xem page, section và preview chunk.
+            </p>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-semibold">Citation detail</h3>
+                <Button variant="ghost" aria-label="Close source" onClick={() => setActiveSource(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Document</div>
+                <div className="font-medium">{activeSource.source_name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Page</div>
+                <div>
+                  {activeSource.page_start ?? "?"}-{activeSource.page_end ?? "?"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Section</div>
+                <div>{activeSource.section_title ?? "No section"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Preview</div>
+                <p className="mt-1 rounded-md bg-muted p-3 leading-6">{activeSource.content_preview}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}

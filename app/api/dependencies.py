@@ -3,9 +3,10 @@ from __future__ import annotations
 from fastapi import Request
 
 from app.core.exceptions import AppError
-from app.services.documents import DocumentManagementService
+from app.services.document import DocumentService
 from app.services.health import HealthService
 from app.services.indexing import IndexingService
+from app.services.jobs import JobService
 from app.services.rag import RAGPipeline
 from app.services.vectorstore.service import VectorStoreService
 
@@ -33,5 +34,9 @@ def get_health_service(request: Request) -> HealthService:
     return _get_state_service(request, "health_service")
 
 
-def get_document_service(request: Request) -> DocumentManagementService:
+def get_document_service(request: Request) -> DocumentService:
     return _get_state_service(request, "document_service")
+
+
+def get_job_service(request: Request) -> JobService:
+    return _get_state_service(request, "job_service")

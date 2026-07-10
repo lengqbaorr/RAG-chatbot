@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --background: 0 0% 99%;
+  --foreground: 222 18% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 18% 12%;
+  --muted: 210 20% 95%;
+  --muted-foreground: 215 13% 42%;
+  --border: 214 16% 88%;
+  --primary: 217 89% 45%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: 220 16% 8%;
+  --foreground: 210 24% 96%;
+  --card: 220 15% 11%;
+  --card-foreground: 210 24% 96%;
+  --muted: 220 13% 18%;
+  --muted-foreground: 215 14% 70%;
+  --border: 220 13% 22%;
+  --primary: 214 95% 62%;
+  --primary-foreground: 220 16% 8%;
+  --destructive: 0 76% 58%;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.markdown-viewer {
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.markdown-viewer p,
+.markdown-viewer ul,
+.markdown-viewer ol,
+.markdown-viewer pre,
+.markdown-viewer table,
+.markdown-viewer blockquote {
+  margin: 0.75rem 0;
+}
+
+.markdown-viewer ul,
+.markdown-viewer ol {
+  padding-left: 1.25rem;
+}
+
+.markdown-viewer ul {
+  list-style: disc;
+}
+
+.markdown-viewer ol {
+  list-style: decimal;
+}
+
+.markdown-viewer code {
+  border-radius: 0.25rem;
+  background: hsl(var(--muted));
+  padding: 0.125rem 0.25rem;
+}
+
+.markdown-viewer pre {
+  overflow: auto;
+  border-radius: 0.5rem;
+  background: hsl(var(--muted));
+  padding: 0.75rem;
+}
+
+.markdown-viewer table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-viewer th,
+.markdown-viewer td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem;
+}

@@ -20,11 +20,16 @@ def chat(
     request: Request,
     rag_pipeline: RAGPipeline = Depends(get_rag_pipeline),
 ) -> ChatResponse:
+    document_service = getattr(request.app.state, "document_service", None)
+    if document_service is not None and hasattr(document_service, "completed_source_ids"):
+        filters = _completed_document_filters(payload.filters, document_service.completed_source_ids())
+    else:
+        filters = payload.filters
     try:
         result = rag_pipeline.answer(
             payload.question,
             strategy=payload.strategy,
-            filters=payload.filters,
+            filters=filters,
             top_k=payload.top_k,
             fetch_k=payload.fetch_k,
             min_score=payload.min_score,
@@ -73,6 +78,25 @@ def chat(
             context_sources=result.report.context_sources,
             llm_provider=result.llm_provider,
             llm_model=result.llm_model,
+            llm_finish_reason=result.report.llm_finish_reason,
+            llm_prompt_tokens=result.report.llm_prompt_tokens,
+            llm_completion_tokens=result.report.llm_completion_tokens,
+            llm_total_tokens=result.report.llm_total_tokens,
             total_latency=result.latency,
         ),
     )
+
+
+def _completed_document_filters(filters: dict | None, completed_source_ids: list[str]) -> dict:
+    merged = dict(filters or {})
+    completed = set(completed_source_ids)
+    if "source_id" in merged:
+        requested = merged["source_id"]
+        if isinstance(requested, dict) and "$in" in requested:
+            allowed = [sid for sid in requested["$in"] if sid in completed]
+        else:
+            allowed = [requested] if requested in completed else []
+        merged["source_id"] = {"$in": allowed or ["__no_completed_document__"]}
+        return merged
+    merged["source_id"] = {"$in": list(completed) or ["__no_completed_document__"]}
+    return merged

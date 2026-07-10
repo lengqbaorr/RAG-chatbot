@@ -3,6 +3,7 @@ from app.api.schemas.documents import (
     DocumentDeleteResponse,
     DocumentInfoResponse,
     DocumentListResponse,
+    DocumentUrlUploadRequest,
     DocumentUploadResponse,
 )
 from app.api.schemas.health import HealthResponse
@@ -14,6 +15,7 @@ __all__ = [
     "DocumentDeleteResponse",
     "DocumentInfoResponse",
     "DocumentListResponse",
+    "DocumentUrlUploadRequest",
     "DocumentUploadResponse",
     "HealthResponse",
     "SourceCitationResponse",
