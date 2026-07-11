@@ -69,6 +69,8 @@ export type ChatRequest = {
   fetch_k?: number;
   min_score?: number;
   filters?: Record<string, unknown>;
+  session_id?: string;
+  selected_source_ids?: string[];
 };
 
 export type SourceCitation = {
@@ -83,6 +85,7 @@ export type SourceCitation = {
 };
 
 export type ChatResponse = {
+  session_id: string | null;
   answer: string;
   sources: SourceCitation[];
   report: {
@@ -97,6 +100,38 @@ export type ChatResponse = {
     llm_total_tokens: number | null;
     total_latency: number;
   };
+};
+
+export type ChatStreamEvent =
+  | { event: "start"; data: { status: string; session_id: string } }
+  | { event: "delta"; data: { text: string } }
+  | { event: "complete"; data: ChatResponse }
+  | { event: "error"; data: { code: string; message: string } };
+
+export type ChatSession = {
+  session_id: string;
+  title: string;
+  selected_source_ids: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatHistoryMessage = {
+  message_id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources: SourceCitation[];
+  selected_source_ids: string[];
+  status: "completed" | "cancelled" | "failed";
+  timestamp: string;
+};
+
+export type ChatSessionListResponse = { sessions: ChatSession[] };
+
+export type ChatSessionDetailResponse = {
+  session: ChatSession;
+  messages: ChatHistoryMessage[];
 };
 
 export type ApiErrorPayload = {

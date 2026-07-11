@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 from abc import ABC, abstractmethod
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -83,21 +84,12 @@ class PDFLoader(BaseDocumentLoader):
 
         try:
             reader = PdfReader(str(path))
-            for index, page in enumerate(reader.pages, start=1):
-                text = page.extract_text() or ""
-                if not text.strip():
-                    continue
-                documents.append(
-                    _build_document(
-                        text=text,
-                        document_type=DocumentType.pdf,
-                        source=str(path),
-                        title=loader_input.title or path.name,
-                        page_number=index,
-                        user_id=loader_input.user_id,
-                        mime_type="application/pdf",
-                    )
-                )
+            documents = _documents_from_pdf_reader(
+                reader,
+                source=str(path),
+                title=loader_input.title or path.name,
+                user_id=loader_input.user_id,
+            )
         except Exception as exc:
             raise DocumentLoadError(f"Cannot read PDF file: {path}") from exc
 
@@ -147,6 +139,23 @@ class HTMLUrlLoader(BaseDocumentLoader):
             response.raise_for_status()
         except requests.RequestException as exc:
             raise DocumentLoadError(f"Cannot fetch URL: {url}") from exc
+
+        content = getattr(response, "content", None)
+        if content is None:
+            content = response.text.encode("utf-8")
+        response_url = getattr(response, "url", url)
+        content_type = response.headers.get("content-type", "")
+        if _is_pdf_response(content, content_type=content_type, response_url=response_url):
+            try:
+                reader = PdfReader(BytesIO(content))
+                return _documents_from_pdf_reader(
+                    reader,
+                    source=url,
+                    title=loader_input.title or _url_filename(response_url, default="document.pdf"),
+                    user_id=loader_input.user_id,
+                )
+            except Exception as exc:
+                raise DocumentLoadError(f"Cannot read PDF from URL: {url}") from exc
 
         html = response.text
         soup = BeautifulSoup(html, "lxml")
@@ -324,6 +333,48 @@ def _html_title(soup: BeautifulSoup) -> str | None:
         return soup.title.string.strip()
     heading = soup.find("h1")
     return heading.get_text(strip=True) if heading else None
+
+
+def _documents_from_pdf_reader(
+    reader: PdfReader,
+    *,
+    source: str,
+    title: str,
+    user_id: str | None,
+) -> list[Document]:
+    documents: list[Document] = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        if not text.strip():
+            continue
+        documents.append(
+            _build_document(
+                text=text,
+                document_type=DocumentType.pdf,
+                source=source,
+                title=title,
+                page_number=index,
+                user_id=user_id,
+                mime_type="application/pdf",
+            )
+        )
+    return documents
+
+
+def _is_pdf_response(content: bytes, *, content_type: str, response_url: str) -> bool:
+    media_type = content_type.split(";", maxsplit=1)[0].strip().lower()
+    return (
+        media_type == "application/pdf"
+        or content.lstrip().startswith(b"%PDF-")
+        or urlparse(response_url).path.lower().endswith(".pdf")
+    )
+
+
+def _url_filename(url: str, *, default: str) -> str:
+    filename = Path(urlparse(url).path).name
+    if not filename:
+        return default
+    return filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
 
 
 def _configure_tesseract() -> None:

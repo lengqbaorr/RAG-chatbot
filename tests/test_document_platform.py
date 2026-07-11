@@ -139,6 +139,34 @@ def test_indexing_service_submits_url_and_skips_duplicate(tmp_path: Path) -> Non
     assert queue.get(timeout=0).source_id == first.source_id
 
 
+def test_indexing_service_retries_failed_duplicate_url(tmp_path: Path) -> None:
+    db = _db(tmp_path)
+    repo = DocumentRepository(db)
+    job_service = JobService(JobRepository(db))
+    queue = InMemoryIndexingQueue()
+    service = IndexingService(
+        document_repository=repo,
+        job_service=job_service,
+        queue=queue,
+        config=IndexingConfig(upload_dir=str(tmp_path / "raw"), duplicate_policy="skip"),
+    )
+
+    first = service.submit_url(url="https://arxiv.org/pdf/1912.13318", title="LayoutLM")
+    queue.get(timeout=0)
+    repo.update_document(first.source_id, status=DocumentStatus.failed)
+
+    retried = service.submit_url(
+        url="https://arxiv.org/pdf/1912.13318",
+        title="LayoutLM",
+    )
+
+    assert retried.source_id == first.source_id
+    assert retried.status == JobStatus.running.value
+    assert retried.duplicate is True
+    assert repo.get_document(first.source_id).status == DocumentStatus.pending
+    assert queue.get(timeout=0).source_id == first.source_id
+
+
 def test_document_delete_removes_vectors_chunks_and_raw_file(tmp_path: Path) -> None:
     db = _db(tmp_path)
     repo = DocumentRepository(db)

@@ -213,7 +213,13 @@ class RecursiveTokenSplitter(BaseSplitter):
         first_lines = body.split("\n", maxsplit=8)
         if body.startswith(context) or header_path[-1] in first_lines:
             return body
-        return f"Section: {context}\n\n{body}"
+        contextualized = f"Section: {context}\n\n{body}"
+        max_contextualized_tokens = (
+            self.config.chunk_size_tokens + self.config.chunk_overlap_tokens
+        )
+        if self.token_counter.count(contextualized) > max_contextualized_tokens:
+            return body
+        return contextualized
 
     def _dominant_header_path(self, group: list[StructuredUnit]) -> list[str]:
         for unit in reversed(group):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
-from app.services.llm.models import LLMRequest, LLMResponse
+from app.services.llm.models import LLMRequest, LLMResponse, LLMStreamChunk
 
 
 class BaseLLMProvider(ABC):
@@ -12,7 +12,7 @@ class BaseLLMProvider(ABC):
         ...
 
     @abstractmethod
-    def stream(self, request: LLMRequest) -> Iterator[str]:
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
         ...
 
     @property

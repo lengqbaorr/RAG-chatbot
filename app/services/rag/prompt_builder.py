@@ -11,7 +11,7 @@ Quy tắc:
 2. Nếu CONTEXT không đủ thông tin, trả lời: "Tôi không tìm thấy thông tin này trong tài liệu được cung cấp."
 3. Không bịa thêm thông tin ngoài tài liệu.
 4. Trả lời bằng tiếng Việt.
-5. Luôn trích dẫn nguồn theo dạng [Source n]."""
+5. Không chèn ký hiệu [Source n] hoặc danh sách nguồn vào câu trả lời. Nguồn sẽ được hệ thống hiển thị riêng."""
 
 
 class PromptBuilder:

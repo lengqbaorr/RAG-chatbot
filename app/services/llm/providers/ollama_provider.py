@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.services.llm.interfaces import BaseLLMProvider
-from app.services.llm.models import LLMRequest, LLMResponse, LLMUsage
+from app.services.llm.models import LLMRequest, LLMResponse, LLMStreamChunk, LLMUsage
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class OllamaProvider(BaseLLMProvider):
         latency = time.perf_counter() - started
         return self._parse_response(raw, model=model, latency=latency)
 
-    def stream(self, request: LLMRequest) -> Iterator[str]:
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
         del request
         raise NotImplementedError("Ollama streaming is not implemented in the baseline provider")
 

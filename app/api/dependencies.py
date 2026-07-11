@@ -4,6 +4,7 @@ from fastapi import Request
 
 from app.core.exceptions import AppError
 from app.services.document import DocumentService
+from app.services.chat_history import ChatHistoryService
 from app.services.health import HealthService
 from app.services.indexing import IndexingService
 from app.services.jobs import JobService
@@ -40,3 +41,7 @@ def get_document_service(request: Request) -> DocumentService:
 
 def get_job_service(request: Request) -> JobService:
     return _get_state_service(request, "job_service")
+
+
+def get_chat_history_service(request: Request) -> ChatHistoryService:
+    return _get_state_service(request, "chat_history_service")

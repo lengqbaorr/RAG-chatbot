@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.db import Database
 from app.core.config import Settings, settings
 from app.services.chunking import ChunkingConfig, DocumentChunker
+from app.services.chat_history import ChatHistoryRepository, ChatHistoryService
 from app.services.embedding import (
     BGEM3EmbeddingProvider,
     EmbeddingConfig,
@@ -40,6 +41,8 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     document_repository = DocumentRepository(database)
     job_repository = JobRepository(database)
     job_service = JobService(job_repository)
+    chat_history_repository = ChatHistoryRepository(database)
+    chat_history_service = ChatHistoryService(chat_history_repository)
 
     embedding_provider = BGEM3EmbeddingProvider(
         model_name=config.embedding_model,
@@ -163,6 +166,8 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     app.state.document_repository = document_repository
     app.state.job_repository = job_repository
     app.state.job_service = job_service
+    app.state.chat_history_repository = chat_history_repository
+    app.state.chat_history_service = chat_history_service
     app.state.embedding_service = embedding_service
     app.state.vector_store = vector_store
     app.state.vector_store_service = vector_store_service

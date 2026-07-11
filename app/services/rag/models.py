@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.services.llm.models import LLMUsage
@@ -64,3 +66,9 @@ class RAGAnswer(BaseModel):
     latency: float = Field(default=0.0, ge=0.0)
     usage: LLMUsage | None = None
     report: RAGReport
+
+
+class RAGStreamEvent(BaseModel):
+    event: Literal["start", "delta", "complete"]
+    text: str | None = None
+    answer: RAGAnswer | None = None

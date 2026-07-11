@@ -1,16 +1,23 @@
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, Square } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/common/Button";
 import { Spinner } from "@/components/common/Spinner";
 
-export function ChatInput({ disabled, onSubmit }: { disabled?: boolean; onSubmit: (question: string) => void }) {
+type ChatInputProps = {
+  disabled?: boolean;
+  streaming?: boolean;
+  onSubmit: (question: string) => void;
+  onCancel: () => void;
+};
+
+export function ChatInput({ disabled, streaming, onSubmit, onCancel }: ChatInputProps) {
   const [question, setQuestion] = useState("");
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = question.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || streaming) return;
     setQuestion("");
     onSubmit(trimmed);
   };
@@ -23,6 +30,7 @@ export function ChatInput({ disabled, onSubmit }: { disabled?: boolean; onSubmit
           rows={1}
           placeholder="Hỏi tài liệu của bạn..."
           value={question}
+          disabled={streaming}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -31,9 +39,15 @@ export function ChatInput({ disabled, onSubmit }: { disabled?: boolean; onSubmit
             }
           }}
         />
-        <Button type="submit" disabled={disabled || !question.trim()} aria-label="Send">
-          {disabled ? <Spinner /> : <SendHorizontal className="h-4 w-4" />}
-        </Button>
+        {streaming ? (
+          <Button type="button" variant="secondary" onClick={onCancel} aria-label="Stop generating" title="Stop generating">
+            <Square className="h-4 w-4 fill-current" />
+          </Button>
+        ) : (
+          <Button type="submit" disabled={disabled || !question.trim()} aria-label="Send">
+            {disabled ? <Spinner /> : <SendHorizontal className="h-4 w-4" />}
+          </Button>
+        )}
       </div>
     </form>
   );

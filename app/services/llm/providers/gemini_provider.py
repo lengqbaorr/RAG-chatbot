@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.services.llm.interfaces import BaseLLMProvider
-from app.services.llm.models import LLMRequest, LLMResponse, LLMUsage
+from app.services.llm.models import LLMRequest, LLMResponse, LLMStreamChunk, LLMUsage
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +60,114 @@ class GeminiProvider(BaseLLMProvider):
         latency = time.perf_counter() - started
         return self._parse_response(raw, model=model, latency=latency)
 
-    def stream(self, request: LLMRequest) -> Iterator[str]:
-        del request
-        raise NotImplementedError("Gemini streaming is not implemented in the baseline provider")
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
+        if not self._api_key:
+            raise GeminiProviderError("Missing GEMINI_API_KEY or GOOGLE_API_KEY")
+
+        model = request.model or self.default_model
+        payload = self._build_payload(request)
+        url = f"{self._base_url}/models/{model}:streamGenerateContent?alt=sse"
+        response = self._open_stream(url, payload)
+        try:
+            data_lines: list[str] = []
+            for raw_line in response.iter_lines(decode_unicode=False):
+                line = (
+                    raw_line.decode("utf-8")
+                    if isinstance(raw_line, bytes)
+                    else raw_line
+                )
+                if line == "":
+                    if data_lines:
+                        yield self._decode_stream_event(data_lines, model=model)
+                        data_lines.clear()
+                    continue
+                if line.startswith(":"):
+                    continue
+                if line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+                elif data_lines:
+                    # Gemini may pretty-print JSON continuation lines without
+                    # repeating the SSE data prefix.
+                    data_lines.append(line)
+            if data_lines:
+                yield self._decode_stream_event(data_lines, model=model)
+        finally:
+            response.close()
+
+    def _decode_stream_event(
+        self,
+        data_lines: list[str],
+        *,
+        model: str,
+    ) -> LLMStreamChunk:
+        raw_data = self._join_json_fragments(data_lines).strip()
+        try:
+            raw = json.loads(raw_data)
+        except json.JSONDecodeError as exc:
+            if "Invalid control character" in str(exc):
+                # Be tolerant of control characters emitted inside streamed
+                # text while keeping normal JSON parsing strict by default.
+                try:
+                    raw = json.loads(raw_data, strict=False)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    return self._parse_stream_chunk(raw, model=model)
+            logger.error(
+                "Gemini stream returned malformed event (characters=%s)",
+                len(raw_data),
+            )
+            raise GeminiProviderError("Gemini stream returned invalid JSON") from exc
+        return self._parse_stream_chunk(raw, model=model)
+
+    @staticmethod
+    def _join_json_fragments(fragments: list[str]) -> str:
+        parts: list[str] = []
+        in_string = False
+        escaped = False
+        for index, fragment in enumerate(fragments):
+            if index:
+                # Some Gemini SSE responses wrap a text value across physical
+                # lines. A literal newline is invalid inside JSON strings.
+                parts.append("\\n" if in_string else "\n")
+            parts.append(fragment)
+            for char in fragment:
+                if escaped:
+                    escaped = False
+                    continue
+                if char == "\\" and in_string:
+                    escaped = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+        return "".join(parts)
+
+    @retry(
+        retry=retry_if_exception_type((requests.ConnectionError, requests.Timeout, GeminiTransientError)),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        stop=stop_after_attempt(5),
+        reraise=True,
+    )
+    def _open_stream(self, url: str, payload: dict[str, Any]) -> requests.Response:
+        response = requests.post(
+            url,
+            headers={"x-goog-api-key": self._api_key or ""},
+            json=payload,
+            timeout=self._timeout_seconds,
+            stream=True,
+        )
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            logger.error("Gemini stream request failed: %s", response.text[:1000])
+            status = response.status_code
+            response.close()
+            if status in {429, 500, 502, 503, 504}:
+                raise GeminiTransientError(
+                    f"Gemini transient stream failure with HTTP {status}"
+                ) from None
+            raise GeminiProviderError(f"Gemini stream failed with HTTP {status}") from None
+        return response
 
     @retry(
         retry=retry_if_exception_type((requests.ConnectionError, requests.Timeout, GeminiTransientError)),
@@ -129,4 +235,22 @@ class GeminiProvider(BaseLLMProvider):
             latency=latency,
             finish_reason=candidate.get("finishReason"),
             raw_response=raw,
+        )
+
+    def _parse_stream_chunk(self, raw: dict[str, Any], *, model: str) -> LLMStreamChunk:
+        candidates = raw.get("candidates") or []
+        candidate = candidates[0] if candidates else {}
+        parts = candidate.get("content", {}).get("parts", [])
+        text = "".join(part.get("text", "") for part in parts)
+        usage_raw = raw.get("usageMetadata", {})
+        return LLMStreamChunk(
+            text=text,
+            model=model,
+            provider=self.provider_name,
+            usage=LLMUsage(
+                prompt_tokens=usage_raw.get("promptTokenCount"),
+                completion_tokens=usage_raw.get("candidatesTokenCount"),
+                total_tokens=usage_raw.get("totalTokenCount"),
+            ),
+            finish_reason=candidate.get("finishReason"),
         )

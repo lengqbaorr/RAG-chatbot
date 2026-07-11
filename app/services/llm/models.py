@@ -46,3 +46,11 @@ class LLMResponse(BaseModel):
     latency: float = Field(default=0.0, ge=0.0)
     finish_reason: str | None = None
     raw_response: dict[str, Any] | None = None
+
+
+class LLMStreamChunk(BaseModel):
+    text: str = ""
+    model: str
+    provider: str
+    usage: LLMUsage = Field(default_factory=LLMUsage)
+    finish_reason: str | None = None

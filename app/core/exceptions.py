@@ -39,6 +39,11 @@ class DocumentNotFoundError(AppError):
     error_code = "document_not_found"
 
 
+class ChatSessionNotFoundError(AppError):
+    status_code = 404
+    error_code = "chat_session_not_found"
+
+
 class ChunkingAppError(AppError):
     status_code = 500
     error_code = "chunking_error"

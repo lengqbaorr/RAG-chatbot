@@ -12,6 +12,7 @@ from app.services.llm import (
     LLMRequest,
     LLMResponse,
     LLMService,
+    LLMStreamChunk,
     LLMUsage,
 )
 from app.services.llm.providers.gemini_provider import GeminiProvider
@@ -57,9 +58,20 @@ class FakeLLMProvider(BaseLLMProvider):
             finish_reason="stop",
         )
 
-    def stream(self, request: LLMRequest) -> Iterator[str]:
-        del request
-        yield self.text
+    def stream(self, request: LLMRequest) -> Iterator[LLMStreamChunk]:
+        self.requests.append(request)
+        for text in ("Câu trả lời ", "[Source 1]."):
+            yield LLMStreamChunk(
+                text=text,
+                model=request.model or self.default_model,
+                provider=self.provider_name,
+            )
+        yield LLMStreamChunk(
+            model=request.model or self.default_model,
+            provider=self.provider_name,
+            finish_reason="STOP",
+            usage=LLMUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        )
 
 
 class FakeRetrieverService:
@@ -84,6 +96,20 @@ class FakeResponse:
 
     def json(self) -> dict:
         return self.payload
+
+
+class FakeStreamingResponse(FakeResponse):
+    def __init__(self, lines: list[str | bytes], status_code: int = 200) -> None:
+        super().__init__({}, status_code=status_code)
+        self.lines = lines
+        self.closed = False
+
+    def iter_lines(self, decode_unicode: bool = False):
+        del decode_unicode
+        yield from self.lines
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _chunk(
@@ -190,7 +216,7 @@ def test_prompt_builder_contains_required_rules_and_context() -> None:
 
     assert request.messages[0].role == "system"
     assert "Chỉ sử dụng thông tin trong CONTEXT" in request.messages[0].content
-    assert "Luôn trích dẫn nguồn theo dạng [Source n]" in request.messages[0].content
+    assert "Không chèn ký hiệu [Source n]" in request.messages[0].content
     assert "QUESTION:" in request.messages[-1].content
     assert "[Source 1]" in request.messages[-1].content
 
@@ -246,6 +272,40 @@ def test_gemini_provider_can_be_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[0]["json"]["systemInstruction"]["parts"][0]["text"] == "System"
 
 
+def test_gemini_provider_streams_text_and_final_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = FakeStreamingResponse(
+        [
+            'data: {"candidates":[{"content":{"parts":[{"text":"Xin chào, tiếng Việt: "}]}}]}'.encode("utf-8"),
+            "",
+            'data: {"candidates":[{"content":{"parts":[',
+            '{"text":"chào',
+            'bạn"}]},"finishReason":"STOP"}],',
+            '"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}',
+            "",
+        ]
+    )
+
+    def fake_post(url, headers, json, timeout, stream):
+        assert url.endswith(":streamGenerateContent?alt=sse")
+        assert stream is True
+        del headers, json, timeout
+        return response
+
+    monkeypatch.setattr("app.services.llm.providers.gemini_provider.requests.post", fake_post)
+    provider = GeminiProvider(api_key="test-key")
+
+    chunks = list(
+        provider.stream(
+            LLMRequest(messages=[LLMMessage(role="user", content="Hello")], model="gemini-test")
+        )
+    )
+
+    assert "".join(chunk.text for chunk in chunks) == "Xin chào, tiếng Việt: chào\nbạn"
+    assert chunks[-1].finish_reason == "STOP"
+    assert chunks[-1].usage.total_tokens == 5
+    assert response.closed is True
+
+
 def test_gemini_provider_retries_transient_http_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {
         "candidates": [{"content": {"parts": [{"text": "OK"}]}, "finishReason": "STOP"}],
@@ -295,10 +355,33 @@ def test_rag_pipeline_with_mock_retriever_and_llm() -> None:
 
     answer = pipeline.answer("Koch xây dựng thế nào?")
 
-    assert "Source 1" in answer.answer
+    assert "Source 1" not in answer.answer
     assert answer.sources[0].source_name == "fractal.pdf"
     assert retriever.calls[0]["strategy"] == "parent_child"
     assert provider.requests[0].metadata["context_sources"] == 1
+
+
+def test_rag_pipeline_streams_delta_then_complete_with_citations() -> None:
+    retrieval_result = _retrieval_result([_chunk("c1")])
+    retriever = FakeRetrieverService(retrieval_result)
+    provider = FakeLLMProvider()
+    pipeline = RAGPipeline(
+        retriever_service=retriever,
+        answer_generator=AnswerGenerator(
+            llm_service=LLMService(
+                config=LLMConfig(provider="fake"),
+                providers={"fake": provider},
+            )
+        ),
+    )
+
+    events = list(pipeline.stream("Koch xây dựng thế nào?"))
+
+    assert [event.event for event in events] == ["start", "delta", "delta", "complete"]
+    assert events[-1].answer is not None
+    assert events[-1].answer.answer == "Câu trả lời."
+    assert events[-1].answer.sources[0].source_name == "fractal.pdf"
+    assert events[-1].answer.report.llm_finish_reason == "STOP"
 
 
 def test_empty_retrieval_returns_fallback_without_calling_llm() -> None:

@@ -92,6 +92,38 @@ def test_load_html_url(monkeypatch: pytest.MonkeyPatch) -> None:
     assert documents[0].metadata.title == "Demo"
 
 
+def test_load_pdf_url_by_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_text((72, 72), "Remote PDF content")
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+
+    class FakeResponse:
+        content = pdf_bytes
+        text = ""
+        url = "https://arxiv.org/pdf/1912.13318"
+        headers = {"content-type": "application/pdf"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "app.services.ingestion.loaders.requests.get",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    documents = DocumentLoaderService().load(
+        LoaderInput(source="https://arxiv.org/pdf/1912.13318")
+    )
+
+    assert len(documents) == 1
+    assert "Remote PDF content" in documents[0].text
+    assert documents[0].metadata.document_type == DocumentType.pdf
+    assert documents[0].metadata.page_number == 1
+    assert documents[0].metadata.mime_type == "application/pdf"
+
+
 def test_infer_document_type_for_url() -> None:
     assert infer_document_type("https://example.com/page") == DocumentType.url
 

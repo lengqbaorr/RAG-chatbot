@@ -52,6 +52,26 @@ class Database:
             if column not in chunk_columns:
                 conn.execute(f"ALTER TABLE chunks ADD COLUMN {column} {definition}")
 
+        session_columns = self._table_columns(conn, "chat_sessions")
+        session_column_defaults = {
+            "title": "TEXT NOT NULL DEFAULT 'New chat'",
+            "owner": "TEXT",
+            "selected_source_ids": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        for column, definition in session_column_defaults.items():
+            if column not in session_columns:
+                conn.execute(f"ALTER TABLE chat_sessions ADD COLUMN {column} {definition}")
+
+        message_columns = self._table_columns(conn, "chat_messages")
+        message_column_defaults = {
+            "sources": "TEXT NOT NULL DEFAULT '[]'",
+            "selected_source_ids": "TEXT NOT NULL DEFAULT '[]'",
+            "status": "TEXT NOT NULL DEFAULT 'completed'",
+        }
+        for column, definition in message_column_defaults.items():
+            if column not in message_columns:
+                conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {column} {definition}")
+
     @staticmethod
     def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
         rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -118,16 +138,27 @@ CREATE INDEX IF NOT EXISTS idx_index_jobs_status ON index_jobs(status);
 
 CREATE TABLE IF NOT EXISTS chat_sessions (
     session_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    owner TEXT,
+    selected_source_ids TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
     message_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    sources TEXT NOT NULL DEFAULT '[]',
+    selected_source_ids TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'completed',
     timestamp TEXT NOT NULL,
     FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time
+ON chat_messages(session_id, timestamp);
 """

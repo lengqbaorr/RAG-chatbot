@@ -7,7 +7,7 @@ from typing import BinaryIO
 from urllib.parse import urlparse
 
 from app.core.exceptions import BadRequestError
-from app.services.document.models import DocumentCreate
+from app.services.document.models import DocumentCreate, DocumentStatus
 from app.services.document.repository import DocumentRepository
 from app.services.document.validators import safe_filename, validate_extension, validate_http_url
 from app.services.indexing.models import IndexingConfig, IndexingTask, UploadSubmission
@@ -57,6 +57,8 @@ class IndexingService:
         duplicate = self.document_repository.find_by_hash(sha256, file_size)
         if duplicate is not None and self.config.duplicate_policy == "skip":
             raw_path.unlink(missing_ok=True)
+            if duplicate.status == DocumentStatus.failed:
+                return self._retry_failed_duplicate(duplicate.source_id)
             job = self.job_service.create_index_job(duplicate.source_id)
             self.job_service.repository.update_job(
                 job.job_id,
@@ -105,6 +107,8 @@ class IndexingService:
 
         duplicate = self.document_repository.find_by_hash(sha256, file_size)
         if duplicate is not None and self.config.duplicate_policy == "skip":
+            if duplicate.status == DocumentStatus.failed:
+                return self._retry_failed_duplicate(duplicate.source_id)
             job = self.job_service.create_index_job(duplicate.source_id)
             self.job_service.repository.update_job(
                 job.job_id,
@@ -145,6 +149,17 @@ class IndexingService:
         job = self.job_service.create_index_job(source_id)
         self.queue.put(IndexingTask(job_id=job.job_id, source_id=source_id))
         return UploadSubmission(job_id=job.job_id, source_id=source_id, status=JobStatus.running.value)
+
+    def _retry_failed_duplicate(self, source_id: str) -> UploadSubmission:
+        self.document_repository.update_document(source_id, status=DocumentStatus.pending)
+        job = self.job_service.create_index_job(source_id)
+        self.queue.put(IndexingTask(job_id=job.job_id, source_id=source_id))
+        return UploadSubmission(
+            job_id=job.job_id,
+            source_id=source_id,
+            status=JobStatus.running.value,
+            duplicate=True,
+        )
 
     def _save_with_hash(self, file_obj: BinaryIO, target_path: Path) -> tuple[int, str]:
         max_bytes = self.config.max_upload_mb * 1024 * 1024

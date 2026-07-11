@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 
 from app.services.llm.config import LLMConfig
 from app.services.llm.interfaces import BaseLLMProvider
-from app.services.llm.models import LLMRequest, LLMResponse
+from app.services.llm.models import LLMRequest, LLMResponse, LLMStreamChunk
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,37 @@ class LLMService:
 
         latency = response.latency or (time.perf_counter() - started)
         return response.model_copy(update={"latency": latency})
+
+    def stream(
+        self,
+        request: LLMRequest,
+        *,
+        provider_name: str | None = None,
+    ) -> Iterator[LLMStreamChunk]:
+        selected_provider = provider_name or self.config.provider
+        provider = self.providers.get(selected_provider)
+        if provider is None:
+            raise LLMServiceError(f"Unsupported LLM provider: {selected_provider}")
+
+        effective_request = request.model_copy(
+            update={
+                "model": request.model or self.config.model or provider.default_model,
+                "temperature": (
+                    request.temperature
+                    if request.temperature is not None
+                    else self.config.temperature
+                ),
+                "max_tokens": request.max_tokens or self.config.max_tokens,
+                "stream": True,
+            }
+        )
+        try:
+            yield from provider.stream(effective_request)
+        except GeneratorExit:
+            raise
+        except Exception:
+            logger.exception("LLM provider stream failed: %s", selected_provider)
+            raise
 
     def _build_default_providers(self) -> dict[str, BaseLLMProvider]:
         from app.services.llm.providers.gemini_provider import GeminiProvider

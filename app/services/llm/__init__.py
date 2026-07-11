@@ -5,6 +5,7 @@ from app.services.llm.models import (
     LLMMessage,
     LLMRequest,
     LLMResponse,
+    LLMStreamChunk,
     LLMUsage,
 )
 from app.services.llm.service import LLMService, LLMServiceError
@@ -43,6 +44,7 @@ __all__ = [
     "LLMResponse",
     "LLMService",
     "LLMServiceError",
+    "LLMStreamChunk",
     "LLMUsage",
     "OllamaProvider",
     "OllamaProviderError",

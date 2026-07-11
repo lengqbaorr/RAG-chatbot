@@ -1,6 +1,7 @@
 import { Check, FileText, X } from "lucide-react";
 
 import { Button } from "@/components/common/Button";
+import { CitationCard } from "@/components/citation/CitationCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Spinner } from "@/components/common/Spinner";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -15,11 +16,16 @@ export function CitationPanel() {
     setActiveSource,
     setSelectedSourceIds,
     toggleSelectedSource,
+    messages,
   } = useChatStore();
   const documents = useDocuments();
   const completedDocuments = documents.data?.documents.filter((document) => document.status === "COMPLETED") ?? [];
   const allCompletedSelected =
     completedDocuments.length > 0 && completedDocuments.every((document) => selectedSourceIds.includes(document.source_id));
+  const latestAnswerSources =
+    [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.sources?.length)?.sources ?? [];
 
   const toggleAll = () => {
     setSelectedSourceIds(allCompletedSelected ? [] : completedDocuments.map((document) => document.source_id));
@@ -97,9 +103,31 @@ export function CitationPanel() {
         </div>
 
         <div className="mt-6 border-t border-border pt-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold">Retrieved sources</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nguồn được dùng cho câu trả lời gần nhất.
+            </p>
+          </div>
+          {latestAnswerSources.length ? (
+            <div className="space-y-2">
+              {latestAnswerSources.map((source) => (
+                <CitationCard
+                  key={`${source.chunk_id}-${source.source_id}`}
+                  source={source}
+                  onClick={() => setActiveSource(source)}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Chưa có nguồn truy xuất cho cuộc trò chuyện này.</p>
+          )}
+        </div>
+
+        <div className="mt-6 border-t border-border pt-4">
           {!activeSource ? (
             <p className="text-sm text-muted-foreground">
-              Click citation trong câu trả lời để xem page, section và preview chunk.
+              Chọn một retrieved source để xem page, section và preview chunk.
             </p>
           ) : (
             <div className="space-y-3 text-sm">

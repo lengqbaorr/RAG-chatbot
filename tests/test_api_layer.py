@@ -5,20 +5,32 @@ from typing import BinaryIO
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_document_service, get_indexing_service, get_job_service, get_rag_pipeline
+from app.api.dependencies import (
+    get_chat_history_service,
+    get_document_service,
+    get_indexing_service,
+    get_job_service,
+    get_rag_pipeline,
+)
 from app.core.exceptions import DocumentNotFoundError
+from app.db import Database
 from app.main import app
 from app.services.document import DocumentDeleteReport, DocumentInfo
+from app.services.chat_history import ChatHistoryRepository, ChatHistoryService
 from app.services.indexing import IndexingConfig, IndexingReport, IndexingService
 from app.services.indexing.models import UploadSubmission
 from app.services.llm.models import LLMUsage
-from app.services.rag.models import Citation, RAGAnswer, RAGReport
+from app.services.rag.models import Citation, RAGAnswer, RAGReport, RAGStreamEvent
 from app.services.retrieval.models import RetrievalReport
 
 
 @pytest.fixture(autouse=True)
-def clear_overrides():
+def clear_overrides(tmp_path):
     app.dependency_overrides.clear()
+    database = Database(str(tmp_path / "chat-test.db"))
+    database.initialize()
+    history = ChatHistoryService(ChatHistoryRepository(database))
+    app.dependency_overrides[get_chat_history_service] = lambda: history
     yield
     app.dependency_overrides.clear()
 
@@ -55,6 +67,13 @@ class FakeRAGPipeline:
                 total_latency=0.12,
             ),
         )
+
+    def stream(self, question: str, **kwargs):
+        answer = self.answer(question, **kwargs)
+        yield RAGStreamEvent(event="start")
+        yield RAGStreamEvent(event="delta", text="Trả lời cho: ")
+        yield RAGStreamEvent(event="delta", text=f"{question} [Source 1]")
+        yield RAGStreamEvent(event="complete", answer=answer)
 
 
 class FakeIndexingService:
@@ -105,7 +124,6 @@ class FakeDocumentService:
             deleted_chunks=30,
             raw_file_deleted=True,
         )
-
 
 class FakeJob:
     def __init__(self, job_id: str = "job-1") -> None:
@@ -180,6 +198,65 @@ def test_post_chat_with_mock_rag_pipeline() -> None:
     assert body["sources"][0]["source_name"] == "file.pdf"
     assert body["report"]["llm_provider"] == "gemini"
     assert body["report"]["retrieval_strategy"] == "parent_child"
+
+
+def test_post_chat_stream_emits_deltas_and_complete_response() -> None:
+    app.dependency_overrides[get_rag_pipeline] = lambda: FakeRAGPipeline()
+    client = TestClient(app)
+
+    response = client.post(
+        "/chat/stream",
+        json={"question": "Koch?", "strategy": "parent_child", "top_k": 3},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: start" in response.text
+    assert response.text.count("event: delta") == 2
+    assert "event: complete" in response.text
+    assert '"source_name":"file.pdf"' in response.text
+
+
+def test_chat_session_crud_and_stream_persistence() -> None:
+    app.dependency_overrides[get_rag_pipeline] = lambda: FakeRAGPipeline()
+    client = TestClient(app)
+
+    created = client.post(
+        "/chat/sessions",
+        json={"title": "Fractal", "selected_source_ids": ["src-1"]},
+    )
+    session_id = created.json()["session_id"]
+    streamed = client.post(
+        "/chat/stream",
+        json={
+            "question": "Koch?",
+            "strategy": "parent_child",
+            "top_k": 3,
+            "session_id": session_id,
+            "selected_source_ids": ["src-1"],
+        },
+    )
+    detail = client.get(f"/chat/sessions/{session_id}")
+
+    assert created.status_code == 201
+    assert streamed.status_code == 200
+    assert detail.status_code == 200
+    assert [message["role"] for message in detail.json()["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert detail.json()["messages"][1]["sources"][0]["source_name"] == "file.pdf"
+
+    renamed = client.patch(
+        f"/chat/sessions/{session_id}",
+        json={"title": "Koch notes"},
+    )
+    deleted = client.delete(f"/chat/sessions/{session_id}")
+    missing = client.get(f"/chat/sessions/{session_id}")
+
+    assert renamed.json()["title"] == "Koch notes"
+    assert deleted.status_code == 200
+    assert missing.status_code == 404
 
 
 def test_upload_document_with_mock_indexing_service() -> None:
