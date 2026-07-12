@@ -3,12 +3,15 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app.api.dependencies import get_document_service, get_indexing_service
 from app.api.schemas.documents import (
     DocumentDeleteResponse,
+    DocumentChunkPreviewResponse,
     DocumentInfoResponse,
     DocumentListResponse,
+    DocumentPreviewResponse,
     DocumentUrlUploadRequest,
     DocumentUploadResponse,
 )
@@ -93,6 +96,41 @@ def get_document(
 ) -> DocumentInfoResponse:
     doc = document_service.get_document(source_id)
     return DocumentInfoResponse(**doc.__dict__)
+
+
+@router.get("/{source_id}/preview", response_model=DocumentPreviewResponse)
+def preview_document(
+    source_id: str,
+    document_service: DocumentService = Depends(get_document_service),
+) -> DocumentPreviewResponse:
+    return DocumentPreviewResponse(**document_service.get_preview(source_id).__dict__)
+
+
+@router.get("/{source_id}/chunks/{chunk_id}", response_model=DocumentChunkPreviewResponse)
+def preview_chunk(
+    source_id: str,
+    chunk_id: str,
+    document_service: DocumentService = Depends(get_document_service),
+) -> DocumentChunkPreviewResponse:
+    return DocumentChunkPreviewResponse(
+        **document_service.get_chunk_preview(source_id, chunk_id).__dict__
+    )
+
+
+@router.get("/{source_id}/file", response_model=None)
+def preview_file(
+    source_id: str,
+    document_service: DocumentService = Depends(get_document_service),
+):
+    path, remote_url, source_name = document_service.get_preview_file(source_id)
+    if remote_url is not None:
+        return RedirectResponse(remote_url, status_code=307)
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=source_name,
+        content_disposition_type="inline",
+    )
 
 
 @router.delete("/{source_id}", response_model=DocumentDeleteResponse)

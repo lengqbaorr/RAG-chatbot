@@ -132,7 +132,7 @@ class DocumentRepository:
                             chunk.chunk_id,
                             chunk.source_id,
                             chunk.parent_id,
-                            "",
+                            chunk.content,
                             chunk.page_start,
                             chunk.page_end,
                             chunk.section_title,
@@ -229,6 +229,7 @@ class DocumentRepository:
             token_count=row["token_count"],
             retrieval_excluded=bool(row["retrieval_excluded"]),
             content_hash=row["content_hash"],
+            content=row["content"] if "content" in row.keys() else "",
         )
 
     @staticmethod

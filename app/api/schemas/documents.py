@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -40,3 +42,24 @@ class DocumentDeleteResponse(BaseModel):
     deleted_vectors: int = Field(default=0, ge=0)
     deleted_chunks: int = Field(default=0, ge=0)
     raw_file_deleted: bool = False
+
+
+class DocumentPreviewResponse(BaseModel):
+    source_id: str
+    source_name: str
+    source_type: str
+    mime_type: str | None = None
+    preview_kind: str
+    page_count: int = Field(default=0, ge=0)
+    content: str | None = None
+    truncated: bool = False
+
+
+class DocumentChunkPreviewResponse(BaseModel):
+    chunk_id: str
+    source_id: str
+    content: str
+    page_start: int | None = None
+    page_end: int | None = None
+    section_title: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

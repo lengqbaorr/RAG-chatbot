@@ -40,6 +40,7 @@ class Database:
 
         chunk_columns = self._table_columns(conn, "chunks")
         chunk_column_defaults = {
+            "content": "TEXT NOT NULL DEFAULT ''",
             "parent_id": "TEXT",
             "page_start": "INTEGER",
             "page_end": "INTEGER",
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     chunk_id TEXT PRIMARY KEY,
     source_id TEXT NOT NULL,
     parent_id TEXT,
+    content TEXT NOT NULL DEFAULT '',
     page_start INTEGER,
     page_end INTEGER,
     section_title TEXT,

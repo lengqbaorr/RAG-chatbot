@@ -6,16 +6,24 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
+    get_auth_service,
     get_chat_history_service,
     get_document_service,
     get_indexing_service,
     get_job_service,
     get_rag_pipeline,
 )
+from app.core.config import Settings
 from app.core.exceptions import DocumentNotFoundError
 from app.db import Database
 from app.main import app
-from app.services.document import DocumentDeleteReport, DocumentInfo
+from app.services.document import (
+    DocumentChunkPreview,
+    DocumentDeleteReport,
+    DocumentInfo,
+    DocumentPreview,
+)
+from app.services.auth import AuthService
 from app.services.chat_history import ChatHistoryRepository, ChatHistoryService
 from app.services.indexing import IndexingConfig, IndexingReport, IndexingService
 from app.services.indexing.models import UploadSubmission
@@ -123,6 +131,30 @@ class FakeDocumentService:
             deleted_vectors=30,
             deleted_chunks=30,
             raw_file_deleted=True,
+        )
+
+    def get_preview(self, source_id: str) -> DocumentPreview:
+        self.get_document(source_id)
+        return DocumentPreview(
+            source_id=source_id,
+            source_name="file.pdf",
+            source_type="pdf",
+            mime_type="application/pdf",
+            preview_kind="pdf",
+            page_count=4,
+        )
+
+    def get_chunk_preview(self, source_id: str, chunk_id: str) -> DocumentChunkPreview:
+        self.get_document(source_id)
+        if chunk_id != "chunk-1":
+            raise DocumentNotFoundError(f"Chunk not found: {chunk_id}")
+        return DocumentChunkPreview(
+            chunk_id=chunk_id,
+            source_id=source_id,
+            content="Retrieved passage",
+            page_start=2,
+            page_end=2,
+            section_title="Section",
         )
 
 class FakeJob:
@@ -354,6 +386,51 @@ def test_delete_document_by_source_id() -> None:
     assert body["source_id"] == "src-1"
     assert body["deleted_count"] == 30
     assert body["deleted_vectors"] == 30
+
+
+def test_document_preview_and_chunk_endpoints() -> None:
+    app.dependency_overrides[get_document_service] = lambda: FakeDocumentService()
+    client = TestClient(app)
+
+    preview = client.get("/documents/src-1/preview")
+    chunk = client.get("/documents/src-1/chunks/chunk-1")
+
+    assert preview.status_code == 200
+    assert preview.json()["preview_kind"] == "pdf"
+    assert chunk.status_code == 200
+    assert chunk.json()["content"] == "Retrieved passage"
+
+
+def test_auth_protects_product_routes_when_enabled() -> None:
+    app.dependency_overrides[get_auth_service] = lambda: AuthService(
+        Settings(
+            auth_enabled=True,
+            auth_local_username="tester",
+            auth_local_password="secret",
+            auth_secret_key="test-secret",
+        )
+    )
+    app.dependency_overrides[get_document_service] = lambda: FakeDocumentService()
+    client = TestClient(app)
+
+    status = client.get("/auth/status")
+    unauthorized = client.get("/documents")
+    login = client.post(
+        "/auth/login",
+        json={"username": "tester", "password": "secret"},
+    )
+    token = login.json()["access_token"]
+    authorized = client.get(
+        "/documents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert status.status_code == 200
+    assert status.json()["enabled"] is True
+    assert unauthorized.status_code == 401
+    assert login.status_code == 200
+    assert authorized.status_code == 200
+    assert authorized.json()["documents"][0]["source_id"] == "src-1"
 
 
 def test_document_not_found_error_mapping() -> None:

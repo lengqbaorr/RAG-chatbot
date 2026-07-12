@@ -12,6 +12,23 @@ export type HealthResponse = {
   ready: boolean;
 };
 
+export type AuthStatusResponse = {
+  enabled: boolean;
+};
+
+export type AuthUser = {
+  user_id: string;
+  username: string;
+  display_name: string;
+};
+
+export type LoginResponse = {
+  access_token: string;
+  token_type: string;
+  expires_at: string;
+  user: AuthUser;
+};
+
 export type DocumentInfo = {
   source_id: string;
   source_name: string;
@@ -43,6 +60,27 @@ export type DocumentDeleteResponse = {
   deleted_vectors: number;
   deleted_chunks: number;
   raw_file_deleted: boolean;
+};
+
+export type DocumentPreview = {
+  source_id: string;
+  source_name: string;
+  source_type: string;
+  mime_type: string | null;
+  preview_kind: "pdf" | "text";
+  page_count: number;
+  content: string | null;
+  truncated: boolean;
+};
+
+export type DocumentChunkPreview = {
+  chunk_id: string;
+  source_id: string;
+  content: string;
+  page_start: number | null;
+  page_end: number | null;
+  section_title: string | null;
+  metadata: Record<string, unknown>;
 };
 
 export type JobInfo = {

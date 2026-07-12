@@ -29,6 +29,11 @@ class BadRequestError(AppError):
     error_code = "bad_request"
 
 
+class AuthenticationError(AppError):
+    status_code = 401
+    error_code = "authentication_error"
+
+
 class DocumentLoadAppError(AppError):
     status_code = 400
     error_code = "document_load_error"

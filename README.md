@@ -22,6 +22,16 @@ GEMINI_API_KEY=your_key_here
 LLM_MAX_TOKENS=2048
 TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
 OCR_LANGUAGES="eng+vie"
+AUTH_ENABLED=false
+```
+
+Nếu muốn bật đăng nhập local:
+
+```env
+AUTH_ENABLED=true
+AUTH_LOCAL_USERNAME=local
+AUTH_LOCAL_PASSWORD=your_password
+AUTH_SECRET_KEY=your_long_random_secret
 ```
 
 Cài Tesseract nếu chưa có:

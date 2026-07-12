@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 
 class DocumentStatus(StrEnum):
@@ -46,6 +47,7 @@ class ChunkRecord:
     token_count: int = 0
     retrieval_excluded: bool = False
     content_hash: str = ""
+    content: str = ""
 
 
 @dataclass(frozen=True)
@@ -76,3 +78,26 @@ class DocumentInfo:
     source_type: str | None
     chunk_count: int
     status: str = DocumentStatus.pending.value
+
+
+@dataclass(frozen=True)
+class DocumentPreview:
+    source_id: str
+    source_name: str
+    source_type: str
+    mime_type: str | None
+    preview_kind: str
+    page_count: int
+    content: str | None = None
+    truncated: bool = False
+
+
+@dataclass(frozen=True)
+class DocumentChunkPreview:
+    chunk_id: str
+    source_id: str
+    content: str
+    page_start: int | None
+    page_end: int | None
+    section_title: str | None
+    metadata: dict[str, Any] = field(default_factory=dict)

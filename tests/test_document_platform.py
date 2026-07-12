@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.db import Database
-from app.services.document import DocumentCreate, DocumentRepository, DocumentService, DocumentStatus
+from app.services.document import (
+    ChunkRecord,
+    DocumentCreate,
+    DocumentRepository,
+    DocumentService,
+    DocumentStatus,
+)
 from app.services.indexing import IndexingConfig, IndexingService
 from app.services.indexing.queue import InMemoryIndexingQueue
 from app.services.jobs import JobRepository, JobService, JobStage, JobStatus
@@ -14,6 +21,7 @@ from app.services.vectorstore.models import VectorStoreDeleteResult, VectorStore
 class FakeVectorStore:
     def __init__(self) -> None:
         self.deleted_source_ids: list[str] = []
+        self.records: dict[str, object] = {}
 
     def delete_by_source_id(self, source_id: str) -> VectorStoreDeleteResult:
         self.deleted_source_ids.append(source_id)
@@ -27,6 +35,9 @@ class FakeVectorStore:
             embedding_dimension=1024,
             distance_metric="cosine",
         )
+
+    def get_by_chunk_id(self, chunk_id: str):
+        return self.records.get(chunk_id)
 
 
 def _db(tmp_path: Path) -> Database:
@@ -192,3 +203,57 @@ def test_document_delete_removes_vectors_chunks_and_raw_file(tmp_path: Path) -> 
     assert report.raw_file_deleted is True
     assert vector_store.deleted_source_ids == ["src-1"]
     assert repo.get_document("src-1").status == DocumentStatus.deleted
+
+
+def test_document_preview_uses_stored_text_and_validates_chunk_source(tmp_path: Path) -> None:
+    db = _db(tmp_path)
+    repo = DocumentRepository(db)
+    raw = tmp_path / "note.txt"
+    raw.write_text("Original text", encoding="utf-8")
+    repo.create_document(
+        DocumentCreate(
+            source_id="src-text",
+            source_name="note.txt",
+            original_filename="note.txt",
+            mime_type="text/plain",
+            file_size=13,
+            sha256="text-hash",
+            raw_path=str(raw),
+        )
+    )
+    repo.replace_chunks(
+        "src-text",
+        [
+            ChunkRecord(
+                chunk_id="chunk-1",
+                source_id="src-text",
+                parent_id="parent-1",
+                page_start=1,
+                page_end=1,
+                section_title="Intro",
+                token_count=3,
+                content_hash="hash",
+                content="Stored preview text",
+            )
+        ],
+    )
+    vector_store = FakeVectorStore()
+    vector_store.records["chunk-1"] = SimpleNamespace(
+        chunk_id="chunk-1",
+        source_id="src-text",
+        source_type="txt",
+        content="Stored preview text",
+        page_start=1,
+        page_end=1,
+        section_title="Intro",
+        metadata={"content_type": "body"},
+    )
+    service = DocumentService(repository=repo, vector_store=vector_store)
+
+    preview = service.get_preview("src-text")
+    chunk = service.get_chunk_preview("src-text", "chunk-1")
+
+    assert preview.preview_kind == "text"
+    assert preview.content == "Stored preview text"
+    assert chunk.content == "Stored preview text"
+    assert chunk.section_title == "Intro"

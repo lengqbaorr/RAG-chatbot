@@ -1,176 +1,233 @@
-# RAG Chatbot Architecture Report
+# RAG Chatbot Architecture
 
-## 1. Tong quan san pham
+## 1. Product Overview
 
-RAG Chatbot la he thong hoi dap tai lieu ca nhan theo kien truc Retrieval-Augmented Generation. San pham cho phep nguoi dung upload tai lieu, he thong tu dong index tai lieu, sau do nguoi dung co the chon nguon tai lieu va dat cau hoi tren frontend.
+RAG Chatbot la ung dung hoi dap tai lieu ca nhan gom FastAPI backend va React frontend. He thong cho phep nguoi dung upload tai lieu, index tai lieu vao vector store, chon source can hoi, chat streaming voi LLM va xem lai citation/document preview.
 
 Muc tieu kien truc hien tai:
 
-- Tach ro frontend, API transport layer va business logic.
+- Frontend tach rieng backend.
+- FastAPI chi la transport/interface layer.
+- Business logic nam trong service layer.
 - Khong dung LangChain/LlamaIndex lam core runtime.
-- Khong dung ChromaDB lam document database.
-- Luu metadata nghiep vu rieng trong SQLite.
-- ChromaDB chi luu vector va metadata phuc vu retrieval.
-- Tat ca model provider nhu embedding va LLM duoc boc sau service/provider interface.
-- Co nen tang de nang cap len PostgreSQL, queue worker, object storage, auth va multi-tenant.
+- SQLite quan ly metadata nghiep vu.
+- ChromaDB chi quan ly vector va metadata retrieval.
+- Embedding/LLM/VectorStore deu nam sau provider/interface rieng.
+- Chat history, document lifecycle va indexing job duoc luu rieng trong database.
 
-## 2. So do tong the
+## 2. System Diagram
 
 ```text
 Browser
   |
   v
-React Frontend
+React + TypeScript + Vite
   |
   v
-FastAPI Interface Layer
+FastAPI
   |
-  +-- Document API --------> Document Service ----> SQLite metadata DB
+  +-- Health API
   |
-  +-- Job API -------------> Job Service ---------> SQLite metadata DB
+  +-- Document API
+  |     |
+  |     +-- DocumentService
+  |     +-- DocumentRepository
+  |     +-- SQLite metadata DB
   |
-  +-- Upload API ----------> Indexing Service ----> Background Worker
-  |                                                   |
-  |                                                   v
-  |                                             Loader / Chunker
-  |                                                   |
-  |                                                   v
-  |                                             Embedding Service
-  |                                                   |
-  |                                                   v
-  |                                             ChromaDB VectorStore
+  +-- Upload/Reindex API
+  |     |
+  |     +-- IndexingService
+  |     +-- IndexJobService
+  |     +-- BackgroundWorker
+  |     +-- Loader -> Chunker -> Embedding -> ChromaDB
   |
-  +-- Chat API -----------> RAG Pipeline
-                              |
-                              v
-                        Retriever Service
-                              |
-                              v
-                        ContextBuilder
-                              |
-                              v
-                        PromptBuilder
-                              |
-                              v
-                        LLMService / Gemini
-                              |
-                              v
-                        CitationBuilder
+  +-- Chat API + SSE Stream API
+  |     |
+  |     +-- ChatHistoryService
+  |     +-- RAGPipeline
+  |           |
+  |           +-- RetrieverService
+  |           +-- ContextBuilder
+  |           +-- PromptBuilder
+  |           +-- LLMService / GeminiProvider
+  |           +-- CitationBuilder
+  |
+  +-- Jobs API
+        |
+        +-- JobService
+        +-- SQLite metadata DB
 ```
 
-## 3. Backend module architecture
+## 3. Runtime Stack
 
-### 3.1 `app/api`
+Backend:
 
-Day la Interface Layer cua backend. Endpoint chi lam cac viec:
+- FastAPI
+- SQLite metadata database
+- ChromaDB vector database
+- BGE-M3 embedding provider
+- Gemini LLM provider
+- Tesseract OCR
+- Background indexing worker
 
-- Nhan HTTP request.
-- Validate request schema.
-- Goi service/pipeline tu dependency injection.
-- Tra response schema on dinh cho frontend.
+Frontend:
 
-Endpoint khong duoc goi truc tiep ChromaDB, BGE-M3, Gemini, chunker internals hoac loader internals.
+- React
+- TypeScript
+- Vite
+- TailwindCSS
+- TanStack Query
+- Zustand
+- React Router
+- Framer Motion
+- React Markdown
 
-Routes hien tai:
+## 4. Backend Entry Points
+
+Primary app entry:
+
+- `app/main.py`
+- `app/api/main.py`
+
+FastAPI registers the same routes at root and `/api/v1`:
 
 - `GET /health`
 - `GET /health/ready`
+- `GET /auth/status`
+- `POST /auth/login`
+- `GET /auth/me`
 - `POST /documents/upload`
+- `POST /documents/url`
 - `GET /documents`
 - `GET /documents/{source_id}`
+- `GET /documents/{source_id}/preview`
+- `GET /documents/{source_id}/chunks/{chunk_id}`
+- `GET /documents/{source_id}/file`
 - `DELETE /documents/{source_id}`
 - `POST /documents/reindex/{source_id}`
 - `GET /jobs`
 - `GET /jobs/{job_id}`
 - `POST /chat`
+- `POST /chat/stream`
+- `POST /chat/sessions`
+- `GET /chat/sessions`
+- `GET /chat/sessions/{session_id}`
+- `GET /chat/sessions/{session_id}/messages`
+- `PATCH /chat/sessions/{session_id}`
+- `DELETE /chat/sessions/{session_id}`
 
-`/chat/stream` chua phai product path hien tai. Chat dang dung non-streaming response.
+## 5. Core Backend Layers
 
-### 3.2 `app/core`
+### 5.1 API Layer
 
-Chua cac thanh phan nen tang dung chung:
+Location:
 
-- `config.py`: doc `.env`, cau hinh app, database, upload, ChromaDB, embedding, LLM, CORS.
-- `logging.py`: middleware logging request, latency, error stack trace.
-- `exceptions.py`: custom exception va mapping loi.
-- `startup.py`: khoi tao service singleton khi app startup.
+- `app/api/routes`
+- `app/api/schemas`
+- `app/api/dependencies.py`
 
-Nguyen tac: config va lifecycle nam o core, khong nam trong route handler.
+Responsibility:
 
-### 3.3 `app/db`
+- Validate HTTP input.
+- Convert request/response schemas.
+- Resolve services through dependency injection.
+- Return stable API contracts for frontend.
 
-Quan ly database metadata.
+Routes do not call ChromaDB, Gemini, BGE-M3, chunker or loader directly.
 
-- `database.py`: khoi tao SQLite schema va migration tuong thich voi DB cu.
-- `sqlite.py`: ket noi SQLite.
-- `postgres.py`: placeholder/adapter cho PostgreSQL sau nay.
+### 5.2 Core Layer
 
-SQLite hien la metadata store chinh cho document, chunk va job. Khi nang cap PostgreSQL, repository contract giu nguyen de han che thay doi business logic.
+Location:
 
-### 3.4 `app/schemas`
+- `app/core/config.py`
+- `app/core/startup.py`
+- `app/core/logging.py`
+- `app/core/exceptions.py`
 
-Chua schema noi bo cho document/chunk duoc cac service su dung. API schema rieng nam trong `app/api/schemas`, khong expose truc tiep internal model neu khong can.
+Responsibility:
 
-## 4. Document Management Platform
+- Load `.env` settings.
+- Initialize singleton services on lifespan startup.
+- Configure CORS.
+- Install request logging middleware.
+- Register exception-to-HTTP mappings.
 
-### 4.1 Muc tieu
+### 5.3 Database Layer
 
-Document Management Platform tach document lifecycle khoi vector database. Metadata nghiep vu duoc quan ly trong SQLite, con ChromaDB chi la vector index.
+Location:
 
-Dieu nay giup:
+- `app/db/database.py`
+- `app/db/migrations`
 
-- List document khong phu thuoc Chroma query.
-- Delete document khong bi xoa nham page-level metadata.
-- Theo doi status indexing ro rang.
-- Ho tro duplicate detection.
-- De mo rong sang PostgreSQL/S3/multi-user.
+SQLite is the current metadata store. It stores product/domain data, not embeddings.
 
-### 4.2 `app/services/document`
+Main tables:
 
-Trach nhiem:
+- `documents`
+- `chunks`
+- `index_jobs`
+- `chat_sessions`
+- `chat_messages`
 
-- Quan ly metadata document.
-- Validate file upload.
-- CRUD document theo `source_id`.
-- List document cho frontend.
-- Tim document theo hash/filename de detect duplicate.
+The database initializer also performs lightweight compatible migrations for existing local DB files.
 
-File chinh:
+## 6. Document Management
 
-- `models.py`: model document, status, metadata.
-- `repository.py`: thao tac DB thuan tuy, khong biet loader/Chroma/Gemini.
-- `service.py`: orchestration cap document.
-- `validators.py`: validate extension, size, filename an toan.
-- `metadata_store.py`: adapter metadata store.
+Location:
 
-### 4.3 Document metadata
+- `app/services/document`
 
-Metadata document luu cac truong chinh:
+Main classes:
 
-- `source_id`: ID nghiep vu duy nhat cua tai lieu.
-- `source_name`: ten hien thi.
-- `original_filename`: ten file goc.
-- `mime_type`: MIME type.
-- `file_size`: kich thuoc file.
-- `sha256`: hash phuc vu duplicate detection.
-- `raw_path`: duong dan file raw da luu.
-- `upload_time`: thoi diem upload.
-- `status`: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `DELETED`.
-- `language`: ngon ngu tai lieu.
-- `page_count`: so page/document units.
-- `chunk_count`: so chunk.
-- `embedding_model`: model embedding dung de index.
-- `embedding_dimension`: dimension vector.
-- `collection_name`: Chroma collection.
-- `deleted_at`: soft delete marker.
+- `DocumentRepository`
+- `DocumentService`
+- `DocumentRecord`
+- `ChunkRecord`
+- `DocumentPreview`
+- `DocumentChunkPreview`
 
-### 4.4 Chunk metadata
+Responsibility:
 
-Chunk metadata luu trong DB rieng de phuc vu document detail, audit va re-index:
+- Manage document metadata.
+- Track status: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `DELETED`.
+- List documents for frontend.
+- Get document detail.
+- Delete document safely.
+- Provide document preview and citation chunk preview.
+- Store chunk metadata and chunk content for preview.
+
+ChromaDB is not the source of truth for document lifecycle.
+
+### 6.1 Document Metadata
+
+`documents` stores:
+
+- `source_id`
+- `source_name`
+- `original_filename`
+- `mime_type`
+- `file_size`
+- `sha256`
+- `raw_path`
+- `upload_time`
+- `status`
+- `owner`
+- `language`
+- `page_count`
+- `chunk_count`
+- `embedding_model`
+- `embedding_dimension`
+- `collection_name`
+- `deleted_at`
+
+### 6.2 Chunk Metadata
+
+`chunks` stores:
 
 - `chunk_id`
 - `source_id`
 - `parent_id`
+- `content`
 - `page_start`
 - `page_end`
 - `section_title`
@@ -179,64 +236,69 @@ Chunk metadata luu trong DB rieng de phuc vu document detail, audit va re-index:
 - `retrieval_excluded`
 - `content_hash`
 
-## 5. Indexing Platform
+`content` is stored so text previews can be loaded from SQLite without re-parsing files.
 
-### 5.1 Indexing flow
+## 7. Document Preview
+
+Preview endpoints:
+
+- `GET /documents/{source_id}/preview`
+- `GET /documents/{source_id}/chunks/{chunk_id}`
+- `GET /documents/{source_id}/file`
+
+Behavior:
+
+- PDF opens through `/file` and browser PDF viewer.
+- URL PDF redirects to the original remote URL.
+- Text-like documents use stored chunk text.
+- Legacy non-PDF documents can fallback to loader-based preview.
+- Retrieved chunk is returned separately and highlighted in frontend.
+
+Current limitation:
+
+- PDF preview opens the correct page, but does not highlight exact PDF coordinates because bounding boxes are not stored yet.
+
+## 8. Indexing Platform
+
+Location:
+
+- `app/services/indexing`
+- `app/services/jobs`
+
+Upload/indexing flow:
 
 ```text
-Upload file
+Upload file or URL
   |
   v
-Save raw file safely
+Validate and save raw input
   |
   v
-Create Document record
+Create document record
   |
   v
-Create IndexJob
+Create index job
   |
   v
-Background Worker
+Background worker
   |
-  +--> Loading
-  +--> Chunking
-  +--> Embedding
-  +--> VectorStore upsert
-  +--> Metadata update
-  +--> Job completed
+  +-- Loading
+  +-- Chunking
+  +-- Embedding
+  +-- VectorStore upsert
+  +-- Save chunk metadata
+  +-- Mark document/job completed
 ```
 
-### 5.2 `app/services/indexing`
-
-Trach nhiem:
-
-- Dieu phoi toan bo indexing pipeline.
-- Gan `source_id` cua metadata platform vao moi chunk/vector.
-- Cap nhat progress job theo stage.
-- Upsert vector vao ChromaDB.
-- Luu chunk metadata vao SQLite.
-- Xu ly loi va cap nhat job/document status.
-
-File chinh:
-
-- `models.py`: request/result/status cua indexing.
-- `service.py`: submit upload/reindex tu API.
-- `pipeline.py`: logic loading -> chunking -> embedding -> vectorstore -> metadata.
-- `worker.py`: background worker baseline bang thread.
-- `queue.py`: queue abstraction de sau nay thay bang Celery/RQ/Dramatiq.
-- `progress.py`: progress va current stage.
-
-### 5.3 Job lifecycle
-
-Job status:
+Job statuses:
 
 - `PENDING`
 - `RUNNING`
-- `COMPLETED`
 - `FAILED`
+- `COMPLETED`
 - `CANCELLED`
 
-Stage chinh:
+Job stages:
 
 - `Uploading`
 - `Loading`
@@ -245,152 +307,184 @@ Stage chinh:
 - `VectorStore`
 - `Finishing`
 
-## 6. Ingestion Layer
+Duplicate detection uses:
 
-`app/services/ingestion` la loader layer cho nhieu loai input.
+- `sha256`
+- `file_size`
 
-Ho tro hien tai:
+## 9. Loader Layer
+
+Location:
+
+- `app/services/ingestion`
+
+Supported inputs:
 
 - PDF
 - DOCX
 - TXT
 - Markdown
 - URL/HTML
-- Image/OCR voi Tesseract
+- Direct PDF URL
+- Image OCR
 
-Loader chuyen input ve document units co content va metadata ban dau. Loader khong chunk, khong embedding va khong ghi vector DB.
+OCR:
 
-## 7. Chunking Layer
+- Tesseract
+- English and Vietnamese language data
 
-`app/services/chunking` chiu trach nhiem bien document units thanh chunk phu hop cho retrieval.
+The loader returns normalized internal documents. It does not embed or store vectors.
 
-Pipeline logic:
+## 10. Chunking Pipeline
 
-```text
-Document
-  |
-  v
-Normalizer
-  |
-  v
-Structure Parser
-  |
-  v
-Chunk Splitter
-  |
-  v
-Post Processor
-  |
-  v
-Validator
-  |
-  v
-DocumentChunk
-```
+Location:
 
-Tinh nang chinh:
+- `app/services/chunking`
 
-- Token-aware chunking.
-- Metadata day du page, section, header path.
-- Content type detection: body, cover, toc, reference, table.
-- Retrieval exclusion cho cover/toc/reference khi can.
-- Parent-child chunking.
-- Merge small chunks.
-- Heading context duoc them vao content embedding.
-- Quality report cho token distribution, duplicate, excluded chunks.
+Responsibilities:
 
-Parent-child strategy:
+- Normalize document text.
+- Parse structure and headings.
+- Detect content type such as body, cover, toc, reference and table.
+- Build child chunks.
+- Build parent chunks for parent-child retrieval.
+- Validate token budget.
+- Generate quality metadata.
 
-- Child chunk dung de search.
-- Parent chunk dung lam context dai hon cho LLM.
-- Citation van giu page/source cua chunk lien quan.
+Important behaviors:
 
-## 8. Embedding Layer
+- Cover/toc/reference chunks can be excluded from retrieval.
+- Section heading context is added to embedding text.
+- Parent-child chunks preserve source/page/citation metadata.
 
-`app/services/embedding` boc embedding provider sau service interface.
+## 11. Embedding Layer
 
-Thanh phan chinh:
+Location:
 
-- `EmbeddingService`: API noi bo cho embed document/query.
-- `BGE-M3 Provider`: provider chinh hien tai.
-- `OpenAI Provider`: optional adapter.
-- SQLite embedding cache: tranh embed lai content da co hash.
-- Validation va normalization vector.
+- `app/services/embedding`
 
-Nguyen tac:
+Main provider:
 
-- Retriever khong biet model embedding cu the.
-- API khong load model truc tiep.
-- Model duoc khoi tao qua startup/dependency, khong khoi tao moi moi request.
+- BGE-M3
 
-## 9. VectorStore Layer
+Responsibilities:
 
-`app/services/vectorstore` truu tuong hoa vector database.
+- Embed documents/chunks.
+- Embed user query.
+- Validate vector dimension.
+- Cache embeddings in SQLite.
+- Hide provider details behind service/provider interface.
 
-Provider hien tai:
+Embedding cache reduces repeated indexing cost when content hash/model version has not changed.
 
-- `ChromaVectorStore`
+## 12. VectorStore Layer
 
-Vai tro:
+Location:
+
+- `app/services/vectorstore`
+
+Main implementation:
+
+- ChromaDB
+
+Responsibilities:
 
 - Upsert embedded chunks.
 - Similarity search.
-- Delete theo `source_id`.
-- Count collection.
-- Boc filter syntax de khong expose ChromaDB API ra ngoai.
+- Delete by `source_id`.
+- Fetch vector record by `chunk_id`.
+- Apply neutral metadata filters from retriever.
 
-ChromaDB chi luu:
+ChromaDB stores:
 
-- Vector.
-- Content can retrieval.
-- Metadata phuc vu filter/citation.
+- vector
+- retrieval metadata
+- chunk content needed for retrieval/preview fallback
 
-ChromaDB khong la source of truth cho document lifecycle.
+ChromaDB does not manage:
 
-## 10. Retrieval Layer
+- document status
+- indexing jobs
+- chat history
+- product metadata
 
-`app/services/retrieval` chiu trach nhiem lay context ung vien tu vector store.
+## 13. Retrieval Layer
+
+Location:
+
+- `app/services/retrieval`
+
+Main strategies:
+
+- `DenseRetriever`
+- `ParentChildRetriever`
 
 Pipeline:
 
 ```text
-User Query
+User query
   |
   v
 QueryPreprocessor
   |
   v
-EmbeddingService.embed_query()
+EmbeddingService.embed_query
   |
   v
-Retriever
+VectorStore similarity_search
   |
   v
-VectorStore.similarity_search()
+Threshold / ContentType filter
   |
   v
-PostProcessor / Filter / Deduplicator
+Deduplicator
   |
   v
-RetrievedContext
+ContextSelector
+  |
+  v
+RetrievalResult
 ```
 
-Thanh phan:
+Retriever only depends on:
 
-- `query_preprocessor.py`: normalize whitespace/punctuation, giu tieng Viet, so, ma, section number.
-- `retrievers/dense_retriever.py`: dense retrieval baseline.
-- `retrievers/parent_child_retriever.py`: search child, expand parent.
-- `filters.py`: score threshold, content type, metadata filter.
-- `deduplicator.py`: dedup theo chunk_id, parent_id, content hash, source page.
-- `context_selector.py`: chon top_k cuoi cung.
-- `postprocessor.py`: pipeline filter/dedup/select.
-- `service.py`: routing strategy `dense` hoac `parent_child`.
+- `EmbeddingService`
+- `BaseVectorStore`
 
-Product path hien tai khong dung reranker. Reranking/evaluation da duoc tach khoi runtime product de giu codebase gon.
+Retriever does not call:
 
-## 11. RAG Layer
+- LLM
+- PromptBuilder
+- FastAPI
+- Chroma SDK directly
 
-`app/services/rag` la answer pipeline cap cao.
+## 14. Reranking and Evaluation
+
+Location:
+
+- `app/services/reranking`
+- `app/services/evaluation`
+
+Reranking:
+
+- Optional layer after retrieval.
+- Keeps original retrieval score.
+- Adds rerank score.
+- Does not call vector store or LLM.
+
+Evaluation:
+
+- Loads local evaluation dataset.
+- Computes retrieval metrics.
+- Supports Recall@K, Precision@K, MRR, citation accuracy and keyword coverage.
+- Does not use LLM as judge in baseline.
+
+## 15. RAG Answer Pipeline
+
+Location:
+
+- `app/services/rag`
+- `app/services/llm`
 
 Pipeline:
 
@@ -398,318 +492,267 @@ Pipeline:
 Question
   |
   v
-RetrieverService.retrieve()
+RetrieverService
   |
   v
-ContextBuilder.build()
+ContextBuilder
   |
   v
-PromptBuilder.build()
+PromptBuilder
   |
   v
-LLMService.generate()
+LLMService
   |
   v
-CitationBuilder.build()
+CitationBuilder
   |
   v
 RAGAnswer
 ```
 
-Thanh phan:
+Current LLM provider:
 
-- `context_builder.py`: format context block, gioi han token budget, giu source metadata.
-- `prompt_builder.py`: tao system/user prompt, bat buoc tra loi dua tren context.
-- `answer_generator.py`: dieu phoi context -> prompt -> LLM.
-- `citation_builder.py`: tao danh sach citation song song voi answer.
-- `pipeline.py`: orchestration end-to-end.
-- `models.py`: `RAGAnswer`, `RAGReport`, citation, context models.
+- Gemini
 
-RAG layer khong biet ChromaDB SDK. RAG layer chi biet retriever, context builder, prompt builder, LLM service va citation builder.
+Provider boundary:
 
-## 12. LLM Layer
+- `BaseLLMProvider`
+- `GeminiProvider`
+- `OpenRouterProvider`
+- `OllamaProvider`
 
-`app/services/llm` boc LLM sau provider interface.
+PromptBuilder does not call LLM. LLMProvider does not know retriever/vector store.
 
-Provider hien tai:
+## 16. Streaming Chat
 
-- `GeminiProvider`: provider chinh.
-- `OpenRouterProvider`: optional.
-- `OllamaProvider`: optional local fallback.
+Endpoint:
 
-Thanh phan:
+- `POST /chat/stream`
 
-- `BaseLLMProvider`: interface generate/stream/default_model/provider_name.
-- `LLMService`: route request den provider, validate config, log latency.
-- `LLMRequest`, `LLMResponse`, `LLMUsage`: schema noi bo.
+Transport:
 
-Nguyen tac:
+- Server-Sent Events
 
-- Provider khong build prompt.
-- Provider khong biet Retriever.
-- Provider khong biet VectorStore.
-- Gemini SDK/REST detail chi nam trong `gemini_provider.py`.
+Events:
 
-Mac dinh product hien tai dung `gemini-2.5-flash` va `LLM_MAX_TOKENS=2048`.
+- `start`
+- `delta`
+- `complete`
+- `error`
 
-## 13. Chat API behavior
+Behavior:
 
-`POST /chat` nhan:
+- Backend streams LLM text chunks.
+- Frontend renders with a typewriter effect for word/character-level perceived realtime.
+- User can cancel request through AbortController.
+- Final `complete` event carries answer, sources and report.
+- Sources are shown in the Sources panel, not inline inside the answer.
 
-- `question`
-- `strategy`
-- `top_k`
-- `min_score`
-- `filters`
+## 17. Local Authentication
 
-Chat route chi search tren document co status `COMPLETED`.
+Location:
 
-Neu frontend chon source cu the, request gui filter:
+- `app/services/auth`
+- `app/api/routes/auth.py`
+- `frontend/src/store/authStore.ts`
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/components/layout/AuthGate.tsx`
 
-```json
-{
-  "filters": {
-    "source_id": {
-      "$in": ["source_id_1", "source_id_2"]
-    }
-  }
-}
-```
+Current auth mode:
 
-Backend se intersect filter nay voi danh sach completed documents de tranh chat vao document chua index xong hoac da bi xoa.
+- Single local user.
+- Optional through `AUTH_ENABLED`.
+- Username/password are read from `.env`.
+- Backend issues a signed HMAC bearer token with expiration.
+- Frontend stores token in local storage and sends `Authorization: Bearer ...`.
 
-Response gom:
+Public endpoints:
 
-- `answer`
-- `sources`
-- `report`
+- `/health`
+- `/health/ready`
+- `/auth/status`
+- `/auth/login`
 
-Report co thong tin retrieval strategy, so source, LLM provider/model, latency, finish reason va token usage neu provider tra ve.
+Protected product endpoints:
 
-## 14. Frontend architecture
+- documents
+- jobs
+- chat
+- chat sessions
 
-Frontend nam trong `frontend/`, dung React + TypeScript + Vite.
+This is a baseline security layer for local/private deployment. It prepares the codebase for future multi-user auth by keeping auth at the API/dependency boundary.
 
-Thu vien chinh:
+## 18. Chat History
 
-- React 19
-- TypeScript strict
-- TailwindCSS
-- TanStack Query
-- React Router
-- Zustand
-- React Markdown
-- Syntax Highlight
-- Framer Motion
-- lucide-react
+Location:
 
-### 14.1 Folder structure
+- `app/services/chat_history`
+- `app/api/routes/chat_sessions.py`
+- `frontend/src/components/layout/Sidebar.tsx`
+- `frontend/src/components/chat/ChatWindow.tsx`
 
-```text
-frontend/src
-  api/          HTTP client va endpoint functions
-  hooks/        TanStack Query hooks va UI logic hooks
-  services/     frontend service helpers
-  store/        Zustand stores
-  components/   UI components theo domain
-  pages/        Dashboard, Documents, Jobs, Chat, Settings
-  routes/       Route definitions
-  styles/       global styles/theme
-  utils/        utility functions
-  types/        shared TypeScript types
-  assets/       static assets
-```
+Backend stores:
 
-### 14.2 Frontend responsibilities
+- chat sessions
+- user messages
+- assistant messages
+- selected documents
+- sources/citations
+- message status
+- timestamps
 
-- Dashboard hien health/system status.
-- Documents page hien list tai lieu, upload, delete, reindex.
-- Jobs page hien indexing progress.
-- Chat page cung cap conversation UI.
-- Source sidebar hien tat ca document da upload.
-- Nguoi dung tick document trong source sidebar de gioi han pham vi chat.
-- Settings page cho cac tham so retrieval/LLM co the thay doi tu UI.
+Message status:
 
-Frontend khong biet business logic chunking, embedding, vectorstore hay LLM provider. Frontend chi goi API contract on dinh.
+- `completed`
+- `cancelled`
+- `failed`
 
-## 15. Storage architecture
+Frontend supports:
 
-### 15.1 SQLite metadata DB
+- New chat
+- Load previous session
+- Rename session
+- Delete session
+- Persist messages after browser refresh
+- Restore selected documents for a session
+- Show cancelled/failed warning for historical assistant messages
 
-Duong dan mac dinh: `data/metadata.db`
+## 19. Frontend Architecture
 
-Luu:
+Location:
 
-- Documents.
-- Chunks metadata.
-- Index jobs.
-- Chat session/message schema de san.
+- `frontend/src/api`
+- `frontend/src/hooks`
+- `frontend/src/store`
+- `frontend/src/components`
+- `frontend/src/pages`
+- `frontend/src/types`
 
-### 15.2 ChromaDB
+Responsibilities:
 
-Duong dan mac dinh: `data/chroma`
+- API client wraps backend endpoints.
+- TanStack Query handles server state.
+- Zustand handles UI/client state.
+- Components stay small and reusable.
+- Pages compose feature components.
 
-Luu:
+Main screens:
 
-- Vector embeddings.
-- Chunk content phuc vu retrieval.
-- Retrieval metadata.
+- Dashboard
+- Documents
+- Jobs
+- Chat
+- Settings
 
-Delete document phai xoa ca metadata DB, Chroma vectors va raw file de tranh orphan data.
+Chat UI:
 
-### 15.3 Embedding cache
+- Left sidebar: navigation and chat history.
+- Center: conversation.
+- Right panel: selected sources and retrieved citations.
+- Modal: document preview.
 
-Duong dan mac dinh: `data/embeddings.db`
+## 20. Source Selection and Citations
 
-Luu cache embedding theo content hash/model/version de tranh tinh lai vector khong can thiet.
+User selects documents in the Sources panel. Selection behavior:
 
-### 15.4 Raw files
+- Tick means include the document.
+- Untick means exclude only that document.
+- Toggling one document does not auto-select the others.
 
-Duong dan mac dinh: `data/raw`
-
-File upload duoc luu bang safe filename/internal source ID. Thu muc data duoc ignore de tranh push tai lieu rieng tu len GitHub.
-
-## 16. Security va data hygiene
-
-Hien tai da ap dung cac nguyen tac:
+Chat request passes:
 
-- `.env` khong duoc commit.
-- API key khong log ra response.
-- Raw documents va local databases nam trong `data/` va duoc ignore.
-- Upload validate extension, size va safe filename.
-- Khong log full document content.
-- CORS cho frontend dev origin.
-- Endpoint khong expose internal SDK exception truc tiep nhu product API contract.
-
-Can bo sung khi len production public:
-
-- Authentication/authorization.
-- Per-user ownership/tenant filter.
-- Rate limiting.
-- File malware scanning.
-- Audit log.
-- Object storage thay vi local filesystem.
-- Secret manager thay vi `.env`.
-
-## 17. Current runtime workflow
-
-### 17.1 Chay local product
-
-Backend:
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Frontend:
-
-```powershell
-cd frontend
-npm run dev
-```
-
-### 17.2 Upload to indexing
-
-```text
-User uploads file in frontend
-  |
-  v
-POST /documents/upload
-  |
-  v
-Create document + job
-  |
-  v
-Worker indexes in background
-  |
-  v
-GET /jobs shows progress
-  |
-  v
-Document status becomes COMPLETED
-```
-
-### 17.3 Chat with selected sources
-
-```text
-User ticks documents in source sidebar
-  |
-  v
-Frontend sends /chat with source_id filter
-  |
-  v
-Backend validates completed documents
-  |
-  v
-Parent-child retriever searches Chroma
-  |
-  v
-ContextBuilder builds source blocks
-  |
-  v
-Gemini generates answer
-  |
-  v
-CitationBuilder returns sources
-```
-
-## 18. Product readiness assessment
-
-He thong hien tai da dat muc production-ready baseline cho local/private RAG product:
-
-- Co backend API ro rang.
-- Co frontend dung duoc hang ngay.
-- Co document management rieng.
-- Co background indexing jobs.
-- Co metadata store rieng.
-- Co vector store abstraction.
-- Co embedding cache.
-- Co RAG pipeline end-to-end.
-- Co citation va source selection.
-- Co health monitoring.
-- Co test suite backend va build frontend.
-
-Chua phai production SaaS public vi con thieu:
-
-- Streaming token-by-token.
-- Auth va multi-user isolation.
-- Persistent chat history UI/backend integration day du.
-- External background queue.
-- PostgreSQL migration thuc te.
-- Object storage.
-- Deployment hardening.
-- Observability stack.
-
-## 19. Gioi han hien tai
-
-- Chat dang dung `/chat` non-streaming, nen cau tra loi chi hien sau khi LLM tra ve xong.
-- Reranker khong nam trong product path hien tai sau dot clean code.
-- Evaluation framework da duoc xoa khoi runtime product; neu can eval sau nay nen tao lai thanh module/tool rieng, tach khoi app production.
-- SQLite phu hop local/dev/single-user. Production multi-user nen dung PostgreSQL.
-- Background worker baseline dung thread/in-process. Production nen dung Redis Queue/Celery/RQ/Dramatiq.
-- Raw file dang luu local. Production nen dung S3-compatible object storage.
-
-## 20. Huong nang cap tiep theo
-
-Thu tu nen uu tien:
-
-1. Streaming chat: them `/chat/stream`, LLM streaming provider va frontend SSE renderer.
-2. Chat sessions: luu conversation vao DB va hien history dung product.
-3. Auth: user account, ownership, source filter theo user.
-4. Queue production: tach indexing worker ra process rieng voi Redis/Celery/RQ.
-5. PostgreSQL: migrate metadata store sang PostgreSQL.
-6. Object storage: luu raw file vao S3/MinIO.
-7. Observability: structured logs, metrics, tracing.
-8. Deployment: Docker Compose, Nginx, health checks, environment profiles.
-
-## 21. Nguyen tac kien truc can giu
-
-- FastAPI la transport layer, khong chua business logic.
-- Repository chi thao tac DB, khong biet loader/vectorstore/LLM.
-- ChromaDB khong quan ly document lifecycle.
-- Embedding va LLM luon qua service/provider interface.
-- Retriever khong goi LLM.
-- LLM provider khong build prompt.
-- ContextBuilder khong goi LLM.
-- Frontend chi phu thuoc API contract, khong phu thuoc implementation backend.
-- Moi nang cap production nen giu contract API on dinh de frontend khong bi vo.
+- `selected_source_ids`
+- neutral `filters.source_id`
+
+Backend also intersects requested source IDs with completed documents, so failed/running/deleted documents are not retrieved.
+
+Retrieved citations are returned as structured objects:
+
+- `source_id`
+- `source_name`
+- `page_start`
+- `page_end`
+- `section_title`
+- `chunk_id`
+- `score`
+- `content_preview`
+
+## 21. Health and Observability
+
+Health endpoints report:
+
+- app status
+- database status
+- embedding service status
+- vector store status
+- LLM provider
+- upload directory
+- free disk space
+- Chroma collection
+- collection count
+- pending jobs
+- ready flag
+
+Logging includes:
+
+- request latency
+- request ID
+- endpoint
+- source ID/job ID when available
+- retrieval strategy
+- number of sources
+- stack trace for errors
+
+Secrets and full document content are not logged.
+
+## 22. Current Production Boundaries
+
+What is production-ready baseline:
+
+- Document metadata is not stored only in Chroma.
+- Upload/indexing has job lifecycle.
+- Chat uses streaming and persistent session history.
+- Source selection is explicit.
+- Citation preview works for PDF/text-like documents.
+- Tests cover core API/service flows.
+
+Known limitations:
+
+- SQLite is suitable for local/single-user baseline, not high-concurrency SaaS.
+- Background worker is local process/thread based.
+- File storage is local disk.
+- PDF preview does not yet store bounding boxes for exact highlight.
+- Authentication is local single-user baseline, not OAuth/multi-user yet.
+- Reranker exists but is not wired as the default product chat path.
+
+## 23. Upgrade Path
+
+PostgreSQL:
+
+- Keep repository contracts.
+- Replace SQLite connection/repository internals.
+- Add Alembic migrations.
+
+Redis/Celery/RQ:
+
+- Keep `IndexingService` and `IndexJobService`.
+- Replace local worker/queue implementation.
+
+S3/Object Storage:
+
+- Keep `raw_path` as storage locator.
+- Add storage provider interface.
+- Replace local disk save/delete logic.
+
+Auth/Multi-tenant:
+
+- Use `owner` on documents and chat sessions.
+- Scope list/search/delete by user ID.
+- Add auth dependency at API layer.
+
+Deployment:
+
+- Backend container.
+- Frontend static build served by Nginx.
+- Persistent volumes for Chroma, SQLite/PostgreSQL and raw uploads.
+- Health checks for backend and worker.

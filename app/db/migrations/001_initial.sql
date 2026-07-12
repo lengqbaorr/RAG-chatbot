@@ -22,6 +22,7 @@ CREATE TABLE chunks (
     chunk_id TEXT PRIMARY KEY,
     source_id TEXT NOT NULL,
     parent_id TEXT,
+    content TEXT NOT NULL DEFAULT '',
     page_start INTEGER,
     page_end INTEGER,
     section_title TEXT,
@@ -42,4 +43,25 @@ CREATE TABLE index_jobs (
     error_message TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE chat_sessions (
+    session_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    owner TEXT,
+    selected_source_ids TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE chat_messages (
+    message_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    sources TEXT NOT NULL DEFAULT '[]',
+    selected_source_ids TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'completed',
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE
 );

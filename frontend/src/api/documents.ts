@@ -1,7 +1,9 @@
-import { apiRequest } from "@/api/client";
+import { API_BASE_URL, apiRequest } from "@/api/client";
 import type {
   DocumentDeleteResponse,
+  DocumentChunkPreview,
   DocumentListResponse,
+  DocumentPreview,
   DocumentUploadResponse,
   DocumentUrlUploadRequest,
 } from "@/types/api";
@@ -36,4 +38,19 @@ export function reindexDocument(sourceId: string): Promise<DocumentUploadRespons
   return apiRequest<DocumentUploadResponse>(`/documents/reindex/${sourceId}`, {
     method: "POST",
   });
+}
+
+export function getDocumentPreview(sourceId: string): Promise<DocumentPreview> {
+  return apiRequest<DocumentPreview>(`/documents/${sourceId}/preview`);
+}
+
+export function getDocumentChunkPreview(
+  sourceId: string,
+  chunkId: string,
+): Promise<DocumentChunkPreview> {
+  return apiRequest<DocumentChunkPreview>(`/documents/${sourceId}/chunks/${chunkId}`);
+}
+
+export function getDocumentFileUrl(sourceId: string): string {
+  return `${API_BASE_URL}/documents/${sourceId}/file`;
 }

@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     disable_startup: bool = False
+    auth_enabled: bool = False
+    auth_local_username: str = "local"
+    auth_local_password: str = "change-me"
+    auth_secret_key: str = "change-me-local-secret"
+    auth_token_ttl_minutes: int = 1440
 
     model_config = SettingsConfigDict(
         env_file=".env",

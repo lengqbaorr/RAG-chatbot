@@ -83,6 +83,7 @@ class IndexingPipeline:
                     token_count=chunk.token_count,
                     retrieval_excluded=chunk.metadata.retrieval_excluded,
                     content_hash=chunk.content_hash,
+                    content=chunk.text,
                 )
                 for chunk in chunks
             ],
@@ -111,6 +112,7 @@ class IndexingPipeline:
             embedding_model=embedded.report.model_name,
             embedding_dimension=embedded.report.dimension,
             collection_name=upsert.collection_name,
+            mime_type=docs[0].metadata.mime_type if docs else document.mime_type,
         )
         self.job_service.mark_completed(job_id)
 

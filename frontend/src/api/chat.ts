@@ -1,4 +1,5 @@
 import { API_BASE_URL, ApiError, apiRequest } from "@/api/client";
+import { useAuthStore } from "@/store/authStore";
 import type {
   ApiErrorPayload,
   ChatRequest,
@@ -66,11 +67,13 @@ export async function streamChatMessage(
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
+  const token = useAuthStore.getState().token;
   const response = await fetch(`${API_BASE_URL}/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(payload),
     signal,
