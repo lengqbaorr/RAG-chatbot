@@ -73,6 +73,16 @@ class Database:
             if column not in message_columns:
                 conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {column} {definition}")
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_settings (
+                owner TEXT PRIMARY KEY,
+                settings_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
     @staticmethod
     def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
         rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -163,4 +173,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time
 ON chat_messages(session_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    owner TEXT PRIMARY KEY,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+);
 """

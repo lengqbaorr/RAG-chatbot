@@ -29,7 +29,9 @@ from app.services.document import DocumentRepository, DocumentService
 from app.services.jobs import JobRepository, JobService
 from app.services.llm import LLMConfig, LLMService
 from app.services.rag import AnswerGenerator, RAGPipeline, RAGPipelineConfig
+from app.services.reranking import CrossEncoderReranker, RerankerConfig, RerankerService
 from app.services.retrieval import ParentChildRetrievalConfig, RetrievalConfig, RetrievalService
+from app.services.settings import SettingsRepository, SettingsService
 from app.services.vectorstore import ChromaVectorStore, VectorStoreConfig, VectorStoreService
 
 
@@ -43,6 +45,8 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     job_service = JobService(job_repository)
     chat_history_repository = ChatHistoryRepository(database)
     chat_history_service = ChatHistoryService(chat_history_repository)
+    settings_repository = SettingsRepository(database)
+    settings_service = SettingsService(repository=settings_repository, config=config)
 
     embedding_provider = BGEM3EmbeddingProvider(
         model_name=config.embedding_model,
@@ -106,6 +110,15 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     rag_pipeline = RAGPipeline(
         retriever_service=retrieval_service,
         answer_generator=AnswerGenerator(llm_service=llm_service),
+        reranker_service=RerankerService(
+            CrossEncoderReranker(
+                RerankerConfig(
+                    model_name=config.reranker_model,
+                    device=config.reranker_device,
+                    local_files_only=config.reranker_local_files_only,
+                )
+            )
+        ),
         config=RAGPipelineConfig(
             retrieval_strategy=config.default_retrieval_strategy,
             top_k=config.default_top_k,
@@ -168,12 +181,15 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     app.state.job_service = job_service
     app.state.chat_history_repository = chat_history_repository
     app.state.chat_history_service = chat_history_service
+    app.state.settings_repository = settings_repository
+    app.state.settings_service = settings_service
     app.state.embedding_service = embedding_service
     app.state.vector_store = vector_store
     app.state.vector_store_service = vector_store_service
     app.state.retrieval_service = retrieval_service
     app.state.llm_service = llm_service
     app.state.rag_pipeline = rag_pipeline
+    app.state.reranker_service = rag_pipeline.reranker_service
     app.state.indexing_service = indexing_service
     app.state.indexing_worker = indexing_worker
     app.state.document_service = document_service

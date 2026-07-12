@@ -34,6 +34,19 @@ AUTH_LOCAL_PASSWORD=your_password
 AUTH_SECRET_KEY=your_long_random_secret
 ```
 
+Reranker mặc định tắt. Khi bật trong Settings lần đầu, model cross-encoder có thể cần tải từ Hugging Face:
+
+```env
+RERANKER_ENABLED=false
+RERANKER_MODEL="BAAI/bge-reranker-v2-m3"
+```
+
+Tải trước reranker nếu không muốn request chat đầu tiên bị treo lâu:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.preload_reranker --clean-incomplete
+```
+
 Cài Tesseract nếu chưa có:
 
 ```powershell

@@ -115,6 +115,9 @@ FastAPI registers the same routes at root and `/api/v1`:
 - `GET /chat/sessions/{session_id}/messages`
 - `PATCH /chat/sessions/{session_id}`
 - `DELETE /chat/sessions/{session_id}`
+- `GET /settings`
+- `PATCH /settings`
+- `POST /settings/reset`
 
 ## 5. Core Backend Layers
 
@@ -467,10 +470,12 @@ Location:
 
 Reranking:
 
-- Optional layer after retrieval.
+- Optional layer after retrieval in the product chat path.
 - Keeps original retrieval score.
 - Adds rerank score.
 - Does not call vector store or LLM.
+- Disabled by default to avoid loading a cross-encoder model unless explicitly enabled.
+- When enabled, RAGPipeline retrieves more candidates, reranks them, then passes final top K to ContextBuilder.
 
 Evaluation:
 
@@ -617,7 +622,47 @@ Frontend supports:
 - Restore selected documents for a session
 - Show cancelled/failed warning for historical assistant messages
 
-## 19. Frontend Architecture
+## 19. Settings Persistence
+
+Location:
+
+- `app/services/settings`
+- `app/api/routes/settings.py`
+- `frontend/src/pages/SettingsPage.tsx`
+- `frontend/src/store/settingsStore.ts`
+
+Settings flow:
+
+```text
+Frontend Settings UI
+  |
+  v
+PATCH /settings
+  |
+  v
+SettingsService
+  |
+  v
+SQLite user_settings
+```
+
+The backend merges `.env` defaults with user overrides stored in SQLite. The frontend hydrates runtime settings after login/app load and uses them for later chat requests.
+
+Persisted settings:
+
+- retrieval strategy
+- top K
+- fetch K
+- min score
+- reranker enabled
+- reranker model
+- LLM model
+- temperature
+- max tokens
+
+Streaming is still a frontend UX preference stored locally because it controls transport behavior rather than backend generation configuration.
+
+## 20. Frontend Architecture
 
 Location:
 
@@ -651,7 +696,7 @@ Chat UI:
 - Right panel: selected sources and retrieved citations.
 - Modal: document preview.
 
-## 20. Source Selection and Citations
+## 21. Source Selection and Citations
 
 User selects documents in the Sources panel. Selection behavior:
 
@@ -677,7 +722,7 @@ Retrieved citations are returned as structured objects:
 - `score`
 - `content_preview`
 
-## 21. Health and Observability
+## 22. Health and Observability
 
 Health endpoints report:
 
@@ -705,7 +750,7 @@ Logging includes:
 
 Secrets and full document content are not logged.
 
-## 22. Current Production Boundaries
+## 23. Current Production Boundaries
 
 What is production-ready baseline:
 
@@ -725,7 +770,7 @@ Known limitations:
 - Authentication is local single-user baseline, not OAuth/multi-user yet.
 - Reranker exists but is not wired as the default product chat path.
 
-## 23. Upgrade Path
+## 24. Upgrade Path
 
 PostgreSQL:
 

@@ -65,3 +65,9 @@ CREATE TABLE chat_messages (
     timestamp TEXT NOT NULL,
     FOREIGN KEY(session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE
 );
+
+CREATE TABLE user_settings (
+    owner TEXT PRIMARY KEY,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+);

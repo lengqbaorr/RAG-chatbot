@@ -12,6 +12,7 @@ from app.services.health import HealthService
 from app.services.indexing import IndexingService
 from app.services.jobs import JobService
 from app.services.rag import RAGPipeline
+from app.services.settings import SettingsService
 from app.services.vectorstore.service import VectorStoreService
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -50,6 +51,10 @@ def get_job_service(request: Request) -> JobService:
 
 def get_chat_history_service(request: Request) -> ChatHistoryService:
     return _get_state_service(request, "chat_history_service")
+
+
+def get_settings_service(request: Request) -> SettingsService:
+    return _get_state_service(request, "settings_service")
 
 
 def get_auth_service() -> AuthService:

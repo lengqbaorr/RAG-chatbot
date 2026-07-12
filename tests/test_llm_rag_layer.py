@@ -25,6 +25,7 @@ from app.services.rag import (
     RAGPipeline,
     RAGPipelineConfig,
 )
+from app.services.reranking import BaseReranker, RerankedChunk, RerankerService
 from app.services.retrieval.models import (
     RetrievedContext,
     RetrievedChunk,
@@ -82,6 +83,39 @@ class FakeRetrieverService:
     def retrieve(self, query: str, **kwargs) -> RetrievalResult:
         self.calls.append({"query": query, **kwargs})
         return self.result
+
+
+class FakeReranker(BaseReranker):
+    def rerank(
+        self,
+        *,
+        query: str,
+        chunks: list[RetrievedChunk],
+        top_k: int,
+    ) -> list[RerankedChunk]:
+        del query
+        ordered = list(reversed(chunks))
+        return [
+            RerankedChunk(
+                chunk=chunk,
+                rerank_score=float(100 - index),
+                original_score=chunk.score,
+                original_rank=chunk.rank,
+            )
+            for index, chunk in enumerate(ordered[:top_k], start=1)
+        ]
+
+
+class FailingReranker(BaseReranker):
+    def rerank(
+        self,
+        *,
+        query: str,
+        chunks: list[RetrievedChunk],
+        top_k: int,
+    ) -> list[RerankedChunk]:
+        del query, chunks, top_k
+        raise RuntimeError("reranker unavailable")
 
 
 class FakeResponse:
@@ -359,6 +393,56 @@ def test_rag_pipeline_with_mock_retriever_and_llm() -> None:
     assert answer.sources[0].source_name == "fractal.pdf"
     assert retriever.calls[0]["strategy"] == "parent_child"
     assert provider.requests[0].metadata["context_sources"] == 1
+
+
+def test_rag_pipeline_can_rerank_candidates_before_generation() -> None:
+    retrieval_result = _retrieval_result(
+        [
+            _chunk("c1", content="First candidate", score=0.9),
+            _chunk("c2", content="Better candidate", score=0.8),
+        ]
+    )
+    retriever = FakeRetrieverService(retrieval_result)
+    provider = FakeLLMProvider()
+    pipeline = RAGPipeline(
+        retriever_service=retriever,
+        answer_generator=AnswerGenerator(
+            llm_service=LLMService(config=LLMConfig(provider="fake"), providers={"fake": provider})
+        ),
+        reranker_service=RerankerService(FakeReranker()),
+        config=RAGPipelineConfig(retrieval_strategy="parent_child", top_k=1, fetch_k=2),
+    )
+
+    answer = pipeline.answer("Question?", top_k=1, fetch_k=2, reranker_enabled=True)
+
+    assert retriever.calls[0]["top_k"] == 2
+    assert answer.retrieval_report.strategy == "parent_child+rerank"
+    assert answer.sources[0].chunk_id == "c2"
+    assert provider.requests[0].metadata["context_sources"] == 1
+
+
+def test_rag_pipeline_falls_back_when_reranker_fails() -> None:
+    retrieval_result = _retrieval_result(
+        [
+            _chunk("c1", content="Original top candidate", score=0.9),
+            _chunk("c2", content="Second candidate", score=0.8),
+        ]
+    )
+    retriever = FakeRetrieverService(retrieval_result)
+    provider = FakeLLMProvider()
+    pipeline = RAGPipeline(
+        retriever_service=retriever,
+        answer_generator=AnswerGenerator(
+            llm_service=LLMService(config=LLMConfig(provider="fake"), providers={"fake": provider})
+        ),
+        reranker_service=RerankerService(FailingReranker()),
+        config=RAGPipelineConfig(retrieval_strategy="parent_child", top_k=1, fetch_k=2),
+    )
+
+    answer = pipeline.answer("Question?", top_k=1, fetch_k=2, reranker_enabled=True)
+
+    assert answer.retrieval_report.strategy == "parent_child"
+    assert answer.sources[0].chunk_id == "c1"
 
 
 def test_rag_pipeline_streams_delta_then_complete_with_citations() -> None:

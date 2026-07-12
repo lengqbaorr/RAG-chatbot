@@ -11,6 +11,11 @@ class ChatRequest(BaseModel):
     top_k: int = Field(default=3, ge=1, le=20)
     fetch_k: int | None = Field(default=None, ge=1, le=100)
     min_score: float | None = Field(default=0.78, ge=0.0, le=1.0)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, ge=1, le=8192)
+    model: str | None = Field(default=None, max_length=120)
+    reranker_enabled: bool | None = None
+    reranker_model: str | None = Field(default=None, max_length=160)
     filters: dict | None = None
     session_id: str | None = None
     selected_source_ids: list[str] = Field(default_factory=list)

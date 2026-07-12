@@ -5,7 +5,7 @@ from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import require_auth
-from app.api.routes import auth, chat, chat_sessions, documents, health, jobs
+from app.api.routes import auth, chat, chat_sessions, documents, health, jobs, settings as settings_route
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging, install_request_logging
@@ -61,6 +61,12 @@ def _include_routes(app: FastAPI, *, prefix: str) -> None:
         dependencies=auth_dependency,
     )
     app.include_router(jobs.router, prefix=prefix, tags=["jobs"], dependencies=auth_dependency)
+    app.include_router(
+        settings_route.router,
+        prefix=prefix,
+        tags=["settings"],
+        dependencies=auth_dependency,
+    )
 
 
 app = create_app()

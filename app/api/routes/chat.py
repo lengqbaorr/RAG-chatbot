@@ -43,6 +43,11 @@ def chat(
             top_k=payload.top_k,
             fetch_k=payload.fetch_k,
             min_score=payload.min_score,
+            model=payload.model,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+            reranker_enabled=bool(payload.reranker_enabled),
+            reranker_model=payload.reranker_model,
         )
     except AppError:
         raise
@@ -103,6 +108,11 @@ def chat_stream(
             top_k=payload.top_k,
             fetch_k=payload.fetch_k,
             min_score=payload.min_score,
+            model=payload.model,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+            reranker_enabled=bool(payload.reranker_enabled),
+            reranker_model=payload.reranker_model,
         )
         try:
             for event in stream:

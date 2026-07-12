@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 
 import { Spinner } from "@/components/common/Spinner";
-import { useAuthStatus, useCurrentUser } from "@/hooks/useAuth";
+import { AUTH_DISABLED, useAuthStatus, useCurrentUser } from "@/hooks/useAuth";
 import { LoginPage } from "@/pages/LoginPage";
 import { useAuthStore } from "@/store/authStore";
 
@@ -18,6 +18,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setAuth({ token, user: currentUser.data });
     }
   }, [authEnabled, currentUser.data, setAuth, token]);
+
+  if (AUTH_DISABLED) {
+    return children;
+  }
 
   if (status.isLoading) {
     return (

@@ -6,7 +6,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { useDocuments } from "@/hooks/useDocuments";
 import { useChatSession, useCreateChatSession } from "@/hooks/useChat";
-import { streamChatMessage } from "@/api/chat";
+import { sendChatMessage, streamChatMessage } from "@/api/chat";
 import { queryClient } from "@/services/queryClient";
 import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -196,29 +196,42 @@ export function ChatWindow() {
         sessionId = session.session_id;
         setActiveSessionId(sessionId);
       }
-      await streamChatMessage({
+      const chatPayload = {
         question,
-        strategy: "parent_child",
+        strategy: settings.retrievalStrategy,
         top_k: settings.topK,
         fetch_k: settings.fetchK,
         min_score: settings.minScore,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        model: settings.model || undefined,
+        reranker_enabled: settings.rerankerEnabled,
+        reranker_model: settings.rerankerModel || undefined,
         filters: {
           source_id: selectedSourceIds.length === 1 ? selectedSourceIds[0] : { $in: selectedSourceIds },
         },
         session_id: sessionId,
         selected_source_ids: selectedSourceIds,
-      }, {
-        onStart: () => {
-          updateMessage(assistantId, { status: "Đang tạo câu trả lời..." });
-        },
-        onDelta: typewriter.push,
-        onComplete: (response) => {
-          completedResponse = response;
-        },
-      }, controller.signal);
-      await typewriter.finish();
-      if (controller.signal.aborted) throw new DOMException("Chat stream cancelled", "AbortError");
-      if (!completedResponse) throw new Error("Stream completed without a final response");
+      };
+      if (settings.streaming) {
+        await streamChatMessage(chatPayload, {
+          onStart: () => {
+            updateMessage(assistantId, { status: "Đang tạo câu trả lời..." });
+          },
+          onDelta: typewriter.push,
+          onComplete: (response) => {
+            completedResponse = response;
+          },
+        }, controller.signal);
+        await typewriter.finish();
+        if (controller.signal.aborted) throw new DOMException("Chat stream cancelled", "AbortError");
+        if (!completedResponse) throw new Error("Stream completed without a final response");
+      } else {
+        updateMessage(assistantId, { status: "Đang tạo câu trả lời..." });
+        completedResponse = await sendChatMessage(chatPayload);
+        if (controller.signal.aborted) throw new DOMException("Chat request cancelled", "AbortError");
+        typewriter.cancel();
+      }
       const response: ChatResponse = completedResponse;
       const stoppedByTokenLimit = response.report.llm_finish_reason === "MAX_TOKENS";
       updateMessage(assistantId, {

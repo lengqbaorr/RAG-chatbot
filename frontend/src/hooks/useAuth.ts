@@ -4,10 +4,14 @@ import { getAuthStatus, getCurrentUser, login } from "@/api/auth";
 import { queryClient } from "@/services/queryClient";
 import { useAuthStore } from "@/store/authStore";
 
+export const AUTH_MODE = import.meta.env.VITE_AUTH_MODE ?? "disabled";
+export const AUTH_DISABLED = AUTH_MODE === "disabled";
+
 export function useAuthStatus() {
   return useQuery({
     queryKey: ["auth-status"],
     queryFn: getAuthStatus,
+    enabled: !AUTH_DISABLED,
     staleTime: 60_000,
   });
 }

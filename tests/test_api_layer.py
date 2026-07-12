@@ -12,6 +12,7 @@ from app.api.dependencies import (
     get_indexing_service,
     get_job_service,
     get_rag_pipeline,
+    get_settings_service,
 )
 from app.core.config import Settings
 from app.core.exceptions import DocumentNotFoundError
@@ -24,12 +25,13 @@ from app.services.document import (
     DocumentPreview,
 )
 from app.services.auth import AuthService
-from app.services.chat_history import ChatHistoryRepository, ChatHistoryService
+from app.services.chat_history import ChatHistoryRepository, ChatHistoryService, ChatRole
 from app.services.indexing import IndexingConfig, IndexingReport, IndexingService
 from app.services.indexing.models import UploadSubmission
 from app.services.llm.models import LLMUsage
 from app.services.rag.models import Citation, RAGAnswer, RAGReport, RAGStreamEvent
 from app.services.retrieval.models import RetrievalReport
+from app.services.settings import SettingsRepository, SettingsService
 
 
 @pytest.fixture(autouse=True)
@@ -38,7 +40,12 @@ def clear_overrides(tmp_path):
     database = Database(str(tmp_path / "chat-test.db"))
     database.initialize()
     history = ChatHistoryService(ChatHistoryRepository(database))
+    settings_service = SettingsService(
+        repository=SettingsRepository(database),
+        config=Settings(),
+    )
     app.dependency_overrides[get_chat_history_service] = lambda: history
+    app.dependency_overrides[get_settings_service] = lambda: settings_service
     yield
     app.dependency_overrides.clear()
 
@@ -291,6 +298,19 @@ def test_chat_session_crud_and_stream_persistence() -> None:
     assert missing.status_code == 404
 
 
+def test_delete_chat_session_removes_messages_without_relying_on_cascade(tmp_path) -> None:
+    database = Database(str(tmp_path / "legacy-chat.db"))
+    database.initialize()
+    history = ChatHistoryService(ChatHistoryRepository(database))
+    session = history.create_session(title="Legacy")
+    history.add_message(session_id=session.session_id, role=ChatRole.user, content="Hello")
+
+    history.delete_session(session.session_id)
+
+    assert history.repository.get_session(session.session_id) is None
+    assert history.repository.list_messages(session.session_id) == []
+
+
 def test_upload_document_with_mock_indexing_service() -> None:
     app.dependency_overrides[get_indexing_service] = lambda: FakeIndexingService()
     client = TestClient(app)
@@ -431,6 +451,50 @@ def test_auth_protects_product_routes_when_enabled() -> None:
     assert login.status_code == 200
     assert authorized.status_code == 200
     assert authorized.json()["documents"][0]["source_id"] == "src-1"
+
+
+def test_settings_endpoint_returns_runtime_defaults() -> None:
+    client = TestClient(app)
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["retrieval_strategy"] == "parent_child"
+    assert body["top_k"] >= 1
+    assert body["llm_model"]
+    assert "reranker_enabled" in body
+    assert body["reranker_model"]
+
+
+def test_settings_endpoint_persists_updates() -> None:
+    client = TestClient(app)
+
+    updated = client.patch(
+        "/settings",
+        json={
+            "retrieval_strategy": "dense",
+            "top_k": 5,
+            "fetch_k": 25,
+            "min_score": 0.66,
+            "llm_temperature": 0.4,
+            "llm_max_tokens": 1024,
+            "reranker_enabled": True,
+            "reranker_model": "BAAI/bge-reranker-v2-m3",
+        },
+    )
+    current = client.get("/settings")
+
+    assert updated.status_code == 200
+    assert current.status_code == 200
+    assert current.json()["retrieval_strategy"] == "dense"
+    assert current.json()["top_k"] == 5
+    assert current.json()["fetch_k"] == 25
+    assert current.json()["min_score"] == 0.66
+    assert current.json()["llm_temperature"] == 0.4
+    assert current.json()["llm_max_tokens"] == 1024
+    assert current.json()["reranker_enabled"] is True
+    assert current.json()["reranker_model"] == "BAAI/bge-reranker-v2-m3"
 
 
 def test_document_not_found_error_mapping() -> None:

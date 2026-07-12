@@ -61,7 +61,15 @@ class AnswerGenerator:
         self.citation_builder = citation_builder or CitationBuilder()
         self.config = config or RAGPipelineConfig()
 
-    def generate(self, *, question: str, retrieval_result: RetrievalResult) -> RAGAnswer:
+    def generate(
+        self,
+        *,
+        question: str,
+        retrieval_result: RetrievalResult,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> RAGAnswer:
         started = time.perf_counter()
         context = self.context_builder.build(retrieval_result)
         citations = self.citation_builder.build(context)
@@ -83,7 +91,13 @@ class AnswerGenerator:
                 report=report,
             )
 
-        request = self.prompt_builder.build(question=question, context=context)
+        request = self.prompt_builder.build(
+            question=question,
+            context=context,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         response = self.llm_service.generate(request)
         latency = time.perf_counter() - started
         report = RAGReport(
@@ -116,6 +130,9 @@ class AnswerGenerator:
         *,
         question: str,
         retrieval_result: RetrievalResult,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[RAGStreamEvent]:
         started = time.perf_counter()
         context = self.context_builder.build(retrieval_result)
@@ -143,7 +160,13 @@ class AnswerGenerator:
             )
             return
 
-        request = self.prompt_builder.build(question=question, context=context)
+        request = self.prompt_builder.build(
+            question=question,
+            context=context,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         answer_parts: list[str] = []
         provider: str | None = None
         model: str | None = None

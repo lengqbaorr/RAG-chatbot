@@ -16,6 +16,39 @@ export type AuthStatusResponse = {
   enabled: boolean;
 };
 
+export type RuntimeSettingsResponse = {
+  app_name: string;
+  app_version: string;
+  environment: string;
+  auth_enabled: boolean;
+  llm_provider: string;
+  llm_model: string;
+  llm_temperature: number;
+  llm_max_tokens: number;
+  retrieval_strategy: "dense" | "parent_child";
+  top_k: number;
+  fetch_k: number;
+  min_score: number;
+  reranker_enabled: boolean;
+  reranker_model: string;
+  embedding_provider: string;
+  embedding_model: string;
+  embedding_dimension: number;
+  chroma_collection: string;
+};
+
+export type RuntimeSettingsUpdate = Partial<{
+  llm_model: string;
+  llm_temperature: number;
+  llm_max_tokens: number;
+  retrieval_strategy: "dense" | "parent_child";
+  top_k: number;
+  fetch_k: number;
+  min_score: number;
+  reranker_enabled: boolean;
+  reranker_model: string;
+}>;
+
 export type AuthUser = {
   user_id: string;
   username: string;
@@ -106,6 +139,11 @@ export type ChatRequest = {
   top_k: number;
   fetch_k?: number;
   min_score?: number;
+  temperature?: number;
+  max_tokens?: number;
+  model?: string;
+  reranker_enabled?: boolean;
+  reranker_model?: string;
   filters?: Record<string, unknown>;
   session_id?: string;
   selected_source_ids?: string[];

@@ -89,6 +89,16 @@ class ChatHistoryRepository:
 
     def delete_session(self, session_id: str) -> bool:
         with self.db.connect() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM chat_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if exists is None:
+                return False
+            conn.execute(
+                "DELETE FROM chat_messages WHERE session_id = ?",
+                (session_id,),
+            )
             cursor = conn.execute(
                 "DELETE FROM chat_sessions WHERE session_id = ?",
                 (session_id,),

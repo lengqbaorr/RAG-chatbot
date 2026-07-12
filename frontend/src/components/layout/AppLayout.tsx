@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { AuthGate } from "@/components/layout/AuthGate";
+import { RuntimeSettingsHydrator } from "@/components/layout/RuntimeSettingsHydrator";
 import { useSettingsStore } from "@/store/settingsStore";
 
 export function AppLayout() {
@@ -19,6 +20,7 @@ export function AppLayout() {
   return (
     <AuthGate>
       <div className="flex min-h-screen bg-background text-foreground">
+        <RuntimeSettingsHydrator />
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />

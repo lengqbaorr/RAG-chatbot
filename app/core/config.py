@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     default_top_k: int = 3
     default_fetch_k: int = 10
     default_min_score: float = 0.78
+    reranker_enabled: bool = False
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_device: str = "cpu"
+    reranker_local_files_only: bool = False
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     disable_startup: bool = False
