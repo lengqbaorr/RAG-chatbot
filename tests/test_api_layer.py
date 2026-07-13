@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import (
     get_auth_service,
     get_chat_history_service,
+    get_conversation_context_service,
     get_document_service,
     get_indexing_service,
     get_job_service,
@@ -26,6 +27,7 @@ from app.services.document import (
 )
 from app.services.auth import AuthService
 from app.services.chat_history import ChatHistoryRepository, ChatHistoryService, ChatRole
+from app.services.conversation import ConversationContextService
 from app.services.indexing import IndexingConfig, IndexingReport, IndexingService
 from app.services.indexing.models import UploadSubmission
 from app.services.llm.models import LLMUsage
@@ -45,6 +47,7 @@ def clear_overrides(tmp_path):
         config=Settings(),
     )
     app.dependency_overrides[get_chat_history_service] = lambda: history
+    app.dependency_overrides[get_conversation_context_service] = lambda: ConversationContextService(history)
     app.dependency_overrides[get_settings_service] = lambda: settings_service
     yield
     app.dependency_overrides.clear()
@@ -296,6 +299,32 @@ def test_chat_session_crud_and_stream_persistence() -> None:
     assert renamed.json()["title"] == "Koch notes"
     assert deleted.status_code == 200
     assert missing.status_code == 404
+
+
+def test_chat_follow_up_uses_conversation_context() -> None:
+    app.dependency_overrides[get_rag_pipeline] = lambda: FakeRAGPipeline()
+    client = TestClient(app)
+
+    first = client.post(
+        "/chat",
+        json={"question": "Vector Space Model là gì?", "strategy": "parent_child", "top_k": 3},
+    )
+    session_id = first.json()["session_id"]
+    follow_up = client.post(
+        "/chat",
+        json={
+            "question": "Nó khác BM25 thế nào?",
+            "strategy": "parent_child",
+            "top_k": 3,
+            "session_id": session_id,
+        },
+    )
+
+    assert follow_up.status_code == 200
+    report = follow_up.json()["report"]
+    assert report["query_rewritten"] is True
+    assert "Vector Space Model" in report["retrieval_query"]
+    assert report["used_history_messages"] >= 2
 
 
 def test_delete_chat_session_removes_messages_without_relying_on_cascade(tmp_path) -> None:

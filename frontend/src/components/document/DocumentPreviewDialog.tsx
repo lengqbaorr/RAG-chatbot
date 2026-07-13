@@ -71,15 +71,6 @@ export function DocumentPreviewDialog() {
 
         {preview.data && !preview.isLoading && !chunk.isLoading ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            {chunk.data?.content ? (
-              <section className="max-h-40 shrink-0 overflow-auto border-b border-border bg-muted/50 px-5 py-3">
-                <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Retrieved passage</div>
-                <mark className="whitespace-pre-wrap bg-yellow-200 text-sm leading-6 text-black dark:bg-yellow-700 dark:text-white">
-                  {chunk.data.content}
-                </mark>
-              </section>
-            ) : null}
-
             {preview.data.preview_kind === "pdf" ? (
               <div className="min-h-0 flex-1 bg-muted">
                 <iframe
@@ -92,7 +83,7 @@ export function DocumentPreviewDialog() {
             ) : (
               <TextDocumentPreview
                 content={preview.data.content ?? ""}
-                highlightedContent={chunk.data?.content ?? activeSource.content_preview}
+                highlightedContent={chunk.data?.content ?? activeSource.content_preview ?? ""}
                 truncated={preview.data.truncated}
               />
             )}

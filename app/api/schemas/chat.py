@@ -42,6 +42,10 @@ class ChatReportResponse(BaseModel):
     llm_prompt_tokens: int | None = None
     llm_completion_tokens: int | None = None
     llm_total_tokens: int | None = None
+    original_question: str | None = None
+    retrieval_query: str | None = None
+    query_rewritten: bool = False
+    used_history_messages: int = 0
     total_latency: float
 
 

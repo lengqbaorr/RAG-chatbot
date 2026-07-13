@@ -1,15 +1,17 @@
-import { RefreshCw, Trash2 } from "lucide-react";
+import { Eye, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/common/Button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Spinner } from "@/components/common/Spinner";
 import { StatusPill } from "@/components/common/StatusPill";
 import { useDeleteDocument, useDocuments, useReindexDocument } from "@/hooks/useDocuments";
+import { useChatStore } from "@/store/chatStore";
 
 export function DocumentTable() {
   const { data, isLoading, isError, error } = useDocuments();
   const remove = useDeleteDocument();
   const reindex = useReindexDocument();
+  const setActiveSource = useChatStore((state) => state.setActiveSource);
 
   if (isLoading) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Loading documents</div>;
   if (isError) return <EmptyState title="Cannot load documents" description={error.message} />;
@@ -38,6 +40,20 @@ export function DocumentTable() {
               </td>
               <td className="px-4 py-3">
                 <div className="flex justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    aria-label="Preview document"
+                    onClick={() =>
+                      setActiveSource({
+                        source_id: document.source_id,
+                        source_name: document.source_name,
+                        content_preview: "",
+                      })
+                    }
+                    disabled={document.status !== "COMPLETED"}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="secondary"
                     aria-label="Reindex document"

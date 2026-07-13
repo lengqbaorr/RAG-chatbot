@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimension: int = 1024
     embedding_cache_path: str = "./data/embeddings.db"
-    embedding_local_files_only: bool = False
+    embedding_local_files_only: bool = True
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.2
@@ -32,12 +32,14 @@ class Settings(BaseSettings):
     duplicate_policy: str = "skip"
     default_retrieval_strategy: str = "parent_child"
     default_top_k: int = 3
-    default_fetch_k: int = 10
-    default_min_score: float = 0.78
+    default_fetch_k: int = 8
+    default_min_score: float = 0.70
+    retrieval_fallback_min_score: float = 0.55
+    retrieval_fallback_enabled: bool = True
     reranker_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_device: str = "cpu"
-    reranker_local_files_only: bool = False
+    reranker_local_files_only: bool = True
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     disable_startup: bool = False

@@ -44,6 +44,10 @@ class Citation(BaseModel):
 
 class RAGReport(BaseModel):
     retrieval_report: RetrievalReport
+    original_question: str | None = None
+    retrieval_query: str | None = None
+    query_rewritten: bool = False
+    used_history_messages: int = 0
     context_tokens: int = Field(..., ge=0)
     context_sources: int = Field(..., ge=0)
     context_truncated: bool = False

@@ -1,4 +1,4 @@
-import { Check, FileText, X } from "lucide-react";
+import { Check, FileSearch, FileText, X } from "lucide-react";
 
 import { Button } from "@/components/common/Button";
 import { CitationCard } from "@/components/citation/CitationCard";
@@ -26,6 +26,9 @@ export function CitationPanel() {
     [...messages]
       .reverse()
       .find((message) => message.role === "assistant" && message.sources?.length)?.sources ?? [];
+  const bestAnswerSource = latestAnswerSources.length
+    ? [...latestAnswerSources].sort((a, b) => b.score - a.score)[0]
+    : null;
 
   const toggleAll = () => {
     setSelectedSourceIds(allCompletedSelected ? [] : completedDocuments.map((document) => document.source_id));
@@ -66,29 +69,27 @@ export function CitationPanel() {
             const completed = document.status === "COMPLETED";
             const checked = selectedSourceIds.includes(document.source_id);
             return (
-              <label
+              <div
                 key={document.source_id}
                 className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition",
+                  "flex items-start gap-3 rounded-md border border-border p-3 transition",
                   checked ? "bg-muted" : "bg-background hover:bg-muted",
-                  !completed && "cursor-not-allowed opacity-60",
+                  !completed && "opacity-60",
                 )}
               >
-                <span
+                <button
+                  type="button"
+                  disabled={!completed}
+                  onClick={() => toggleSelectedSource(document.source_id)}
                   className={cn(
                     "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border",
                     checked && "border-primary bg-primary text-primary-foreground",
+                    completed ? "cursor-pointer" : "cursor-not-allowed",
                   )}
+                  aria-label={checked ? "Unselect source" : "Select source"}
                 >
                   {checked ? <Check className="h-3.5 w-3.5" /> : null}
-                </span>
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={checked}
-                  disabled={!completed}
-                  onChange={() => toggleSelectedSource(document.source_id)}
-                />
+                </button>
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{document.source_name}</span>
@@ -97,27 +98,41 @@ export function CitationPanel() {
                     <StatusPill status={document.status} />
                   </span>
                 </span>
-              </label>
+                <Button
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0 px-0"
+                  disabled={!completed}
+                  onClick={() =>
+                    setActiveSource({
+                      source_id: document.source_id,
+                      source_name: document.source_name,
+                      content_preview: "",
+                    })
+                  }
+                  aria-label="Open document preview"
+                  title="Preview"
+                >
+                  <FileSearch className="h-4 w-4" />
+                </Button>
+              </div>
             );
           })}
         </div>
 
         <div className="mt-6 border-t border-border pt-4">
           <div className="mb-3">
-            <h3 className="text-sm font-semibold">Retrieved sources</h3>
+            <h3 className="text-sm font-semibold">Best source</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Nguồn được dùng cho câu trả lời gần nhất.
+              Nguồn có điểm cao nhất cho câu trả lời gần nhất.
             </p>
           </div>
-          {latestAnswerSources.length ? (
+          {bestAnswerSource ? (
             <div className="space-y-2">
-              {latestAnswerSources.map((source) => (
-                <CitationCard
-                  key={`${source.chunk_id}-${source.source_id}`}
-                  source={source}
-                  onClick={() => setActiveSource(source)}
-                />
-              ))}
+              <CitationCard
+                key={`${bestAnswerSource.chunk_id}-${bestAnswerSource.source_id}`}
+                source={bestAnswerSource}
+                onClick={() => setActiveSource(bestAnswerSource)}
+              />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Chưa có nguồn truy xuất cho cuộc trò chuyện này.</p>
@@ -150,10 +165,6 @@ export function CitationPanel() {
               <div>
                 <div className="text-xs text-muted-foreground">Section</div>
                 <div>{activeSource.section_title ?? "No section"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Preview</div>
-                <p className="mt-1 rounded-md bg-muted p-3 leading-6">{activeSource.content_preview}</p>
               </div>
             </div>
           )}

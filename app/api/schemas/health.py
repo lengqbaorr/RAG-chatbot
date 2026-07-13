@@ -14,4 +14,11 @@ class HealthResponse(BaseModel):
     collection: str | None = None
     collection_count: int = Field(..., ge=0)
     pending_jobs: int = Field(default=0, ge=0)
+    embedding_model: str | None = None
+    embedding_model_loaded: bool = False
+    embedding_model_cached: bool = False
+    reranker_model: str | None = None
+    reranker_model_loaded: bool = False
+    reranker_model_cached: bool = False
+    reranker_available: bool = False
     ready: bool

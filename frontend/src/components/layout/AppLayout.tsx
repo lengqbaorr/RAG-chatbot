@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { AuthGate } from "@/components/layout/AuthGate";
+import { DocumentPreviewDialog } from "@/components/document/DocumentPreviewDialog";
 import { RuntimeSettingsHydrator } from "@/components/layout/RuntimeSettingsHydrator";
 import { useSettingsStore } from "@/store/settingsStore";
 
@@ -28,6 +29,7 @@ export function AppLayout() {
             <Outlet />
           </main>
         </div>
+        <DocumentPreviewDialog />
       </div>
     </AuthGate>
   );

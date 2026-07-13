@@ -85,6 +85,16 @@ class FakeRetrieverService:
         return self.result
 
 
+class SequencedRetrieverService:
+    def __init__(self, results: list[RetrievalResult]) -> None:
+        self.results = results
+        self.calls: list[dict] = []
+
+    def retrieve(self, query: str, **kwargs) -> RetrievalResult:
+        self.calls.append({"query": query, **kwargs})
+        return self.results.pop(0)
+
+
 class FakeReranker(BaseReranker):
     def rerank(
         self,
@@ -393,6 +403,65 @@ def test_rag_pipeline_with_mock_retriever_and_llm() -> None:
     assert answer.sources[0].source_name == "fractal.pdf"
     assert retriever.calls[0]["strategy"] == "parent_child"
     assert provider.requests[0].metadata["context_sources"] == 1
+
+
+def test_rag_pipeline_uses_resolved_query_for_retrieval_and_history_for_prompt() -> None:
+    retrieval_result = _retrieval_result([_chunk("c1")])
+    retriever = FakeRetrieverService(retrieval_result)
+    provider = FakeLLMProvider()
+    pipeline = RAGPipeline(
+        retriever_service=retriever,
+        answer_generator=AnswerGenerator(
+            llm_service=LLMService(config=LLMConfig(provider="fake"), providers={"fake": provider})
+        ),
+        config=RAGPipelineConfig(retrieval_strategy="parent_child", top_k=3, fetch_k=10),
+    )
+    history = [
+        LLMMessage(role="user", content="Vector Space Model là gì?"),
+        LLMMessage(role="assistant", content="Vector Space Model biểu diễn tài liệu bằng vector."),
+    ]
+
+    answer = pipeline.answer(
+        "Nó khác BM25 thế nào?",
+        retrieval_query="Dựa trên ngữ cảnh hội thoại trước đó về Vector Space Model, hãy trả lời câu hỏi: Nó khác BM25 thế nào?",
+        conversation_history=history,
+    )
+
+    assert retriever.calls[0]["query"].startswith("Dựa trên ngữ cảnh")
+    assert provider.requests[0].messages[1:3] == history
+    assert provider.requests[0].messages[-1].content.endswith("Nó khác BM25 thế nào?\n\nANSWER:")
+    assert answer.report.query_rewritten is True
+
+
+def test_rag_pipeline_retries_empty_retrieval_with_lower_score() -> None:
+    retriever = SequencedRetrieverService(
+        [
+            _retrieval_result([]),
+            _retrieval_result([_chunk("fallback", content="Fallback candidate", score=0.62)]),
+        ]
+    )
+    provider = FakeLLMProvider()
+    pipeline = RAGPipeline(
+        retriever_service=retriever,
+        answer_generator=AnswerGenerator(
+            llm_service=LLMService(config=LLMConfig(provider="fake"), providers={"fake": provider})
+        ),
+        config=RAGPipelineConfig(
+            retrieval_strategy="parent_child",
+            top_k=1,
+            fetch_k=2,
+            min_score=0.78,
+            fallback_min_score=0.55,
+        ),
+    )
+
+    answer = pipeline.answer("Question?", top_k=1, fetch_k=2, min_score=0.78)
+
+    assert len(retriever.calls) == 2
+    assert retriever.calls[0]["min_score"] == 0.78
+    assert retriever.calls[1]["min_score"] == 0.55
+    assert answer.sources[0].chunk_id == "fallback"
+    assert answer.retrieval_report.strategy == "parent_child+fallback_0.55"
 
 
 def test_rag_pipeline_can_rerank_candidates_before_generation() -> None:

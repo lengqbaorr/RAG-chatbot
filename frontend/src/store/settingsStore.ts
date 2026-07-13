@@ -37,8 +37,8 @@ type SettingsState = {
 const defaultRagSettings = {
   retrievalStrategy: "parent_child" as RetrievalStrategy,
   topK: 3,
-  fetchK: 10,
-  minScore: 0.78,
+  fetchK: 8,
+  minScore: 0.7,
   temperature: 0.2,
   maxTokens: 2048,
   model: "gemini-2.5-flash",

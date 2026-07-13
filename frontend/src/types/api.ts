@@ -9,6 +9,13 @@ export type HealthResponse = {
   collection: string | null;
   collection_count: number;
   pending_jobs: number;
+  embedding_model: string | null;
+  embedding_model_loaded: boolean;
+  embedding_model_cached: boolean;
+  reranker_model: string | null;
+  reranker_model_loaded: boolean;
+  reranker_model_cached: boolean;
+  reranker_available: boolean;
   ready: boolean;
 };
 
@@ -174,6 +181,10 @@ export type ChatResponse = {
     llm_prompt_tokens: number | null;
     llm_completion_tokens: number | null;
     llm_total_tokens: number | null;
+    original_question: string | null;
+    retrieval_query: string | null;
+    query_rewritten: boolean;
+    used_history_messages: number;
     total_latency: number;
   };
 };

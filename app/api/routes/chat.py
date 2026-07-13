@@ -7,7 +7,11 @@ from collections.abc import Iterator
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_chat_history_service, get_rag_pipeline
+from app.api.dependencies import (
+    get_chat_history_service,
+    get_conversation_context_service,
+    get_rag_pipeline,
+)
 from app.api.schemas.chat import ChatReportResponse, ChatRequest, ChatResponse, SourceCitationResponse
 from app.core.exceptions import AppError, RetrievalAppError
 from app.services.chat_history import (
@@ -15,6 +19,8 @@ from app.services.chat_history import (
     ChatMessageStatus,
     ChatRole,
 )
+from app.services.conversation import ConversationContextService, ResolvedQuestion
+from app.services.llm.models import LLMMessage
 from app.services.rag import RAGAnswer, RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -28,8 +34,13 @@ def chat(
     request: Request,
     rag_pipeline: RAGPipeline = Depends(get_rag_pipeline),
     chat_history: ChatHistoryService = Depends(get_chat_history_service),
+    conversation_context: ConversationContextService = Depends(get_conversation_context_service),
 ) -> ChatResponse:
     session_id, selected_source_ids = _prepare_history(payload, chat_history)
+    resolved_question = conversation_context.resolve_question(
+        session_id=session_id,
+        question=payload.question,
+    )
     document_service = getattr(request.app.state, "document_service", None)
     if document_service is not None and hasattr(document_service, "completed_source_ids"):
         filters = _completed_document_filters(payload.filters, document_service.completed_source_ids())
@@ -38,6 +49,8 @@ def chat(
     try:
         result = rag_pipeline.answer(
             payload.question,
+            retrieval_query=resolved_question.retrieval_query,
+            conversation_history=_conversation_messages(resolved_question),
             strategy=payload.strategy,
             filters=filters,
             top_k=payload.top_k,
@@ -49,6 +62,7 @@ def chat(
             reranker_enabled=bool(payload.reranker_enabled),
             reranker_model=payload.reranker_model,
         )
+        result = _with_conversation_report(result, resolved_question)
     except AppError:
         raise
     except Exception as exc:
@@ -90,8 +104,13 @@ def chat_stream(
     request: Request,
     rag_pipeline: RAGPipeline = Depends(get_rag_pipeline),
     chat_history: ChatHistoryService = Depends(get_chat_history_service),
+    conversation_context: ConversationContextService = Depends(get_conversation_context_service),
 ) -> StreamingResponse:
     session_id, selected_source_ids = _prepare_history(payload, chat_history)
+    resolved_question = conversation_context.resolve_question(
+        session_id=session_id,
+        question=payload.question,
+    )
     document_service = getattr(request.app.state, "document_service", None)
     if document_service is not None and hasattr(document_service, "completed_source_ids"):
         filters = _completed_document_filters(payload.filters, document_service.completed_source_ids())
@@ -103,6 +122,8 @@ def chat_stream(
         persisted = False
         stream = rag_pipeline.stream(
             payload.question,
+            retrieval_query=resolved_question.retrieval_query,
+            conversation_history=_conversation_messages(resolved_question),
             strategy=payload.strategy,
             filters=filters,
             top_k=payload.top_k,
@@ -126,7 +147,10 @@ def chat_stream(
                     answer_parts.append(text)
                     yield _encode_sse("delta", {"text": text})
                 elif event.event == "complete" and event.answer is not None:
-                    response = _to_chat_response(event.answer, session_id=session_id)
+                    response = _to_chat_response(
+                        _with_conversation_report(event.answer, resolved_question),
+                        session_id=session_id,
+                    )
                     _save_assistant_message(response, selected_source_ids, chat_history)
                     persisted = True
                     yield _encode_sse("complete", response.model_dump(mode="json"))
@@ -217,9 +241,36 @@ def _to_chat_response(result: RAGAnswer, *, session_id: str | None = None) -> Ch
             llm_prompt_tokens=result.report.llm_prompt_tokens,
             llm_completion_tokens=result.report.llm_completion_tokens,
             llm_total_tokens=result.report.llm_total_tokens,
+            original_question=result.report.original_question,
+            retrieval_query=result.report.retrieval_query,
+            query_rewritten=result.report.query_rewritten,
+            used_history_messages=result.report.used_history_messages,
             total_latency=result.latency,
         ),
     )
+
+
+def _with_conversation_report(
+    result: RAGAnswer,
+    resolved_question: ResolvedQuestion,
+) -> RAGAnswer:
+    report = result.report.model_copy(
+        update={
+            "original_question": resolved_question.original_question,
+            "retrieval_query": resolved_question.retrieval_query,
+            "query_rewritten": resolved_question.rewritten,
+            "used_history_messages": resolved_question.conversation.used_messages,
+        }
+    )
+    return result.model_copy(update={"report": report})
+
+
+def _conversation_messages(resolved_question: ResolvedQuestion) -> list[LLMMessage]:
+    return [
+        LLMMessage(role=turn.role, content=turn.content)
+        for turn in resolved_question.conversation.turns
+        if turn.role in {"user", "assistant"} and turn.content.strip()
+    ]
 
 
 def _encode_sse(event: str, data: dict) -> str:

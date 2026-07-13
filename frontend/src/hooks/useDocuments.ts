@@ -15,7 +15,7 @@ export function useDocuments() {
   return useQuery({
     queryKey: ["documents"],
     queryFn: listDocuments,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 }
 

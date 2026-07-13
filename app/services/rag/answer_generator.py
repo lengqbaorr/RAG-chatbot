@@ -8,7 +8,7 @@ from app.services.llm.service import LLMService
 from app.services.rag.citation_builder import CitationBuilder
 from app.services.rag.config import RAGPipelineConfig
 from app.services.rag.context_builder import ContextBuilder
-from app.services.llm.models import LLMUsage
+from app.services.llm.models import LLMMessage, LLMUsage
 from app.services.rag.models import RAGAnswer, RAGReport, RAGStreamEvent
 from app.services.rag.prompt_builder import PromptBuilder
 from app.services.retrieval.models import RetrievalResult
@@ -66,11 +66,14 @@ class AnswerGenerator:
         *,
         question: str,
         retrieval_result: RetrievalResult,
+        report_metadata: dict | None = None,
+        conversation_history: list[LLMMessage] | None = None,
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> RAGAnswer:
         started = time.perf_counter()
+        report_metadata = report_metadata or {}
         context = self.context_builder.build(retrieval_result)
         citations = self.citation_builder.build(context)
 
@@ -78,6 +81,7 @@ class AnswerGenerator:
             latency = time.perf_counter() - started
             report = RAGReport(
                 retrieval_report=retrieval_result.report,
+                **report_metadata,
                 context_tokens=0,
                 context_sources=0,
                 context_truncated=False,
@@ -94,6 +98,7 @@ class AnswerGenerator:
         request = self.prompt_builder.build(
             question=question,
             context=context,
+            conversation_history=conversation_history,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -102,6 +107,7 @@ class AnswerGenerator:
         latency = time.perf_counter() - started
         report = RAGReport(
             retrieval_report=retrieval_result.report,
+            **report_metadata,
             context_tokens=context.token_count,
             context_sources=len(context.sources),
             context_truncated=context.truncated,
@@ -130,11 +136,14 @@ class AnswerGenerator:
         *,
         question: str,
         retrieval_result: RetrievalResult,
+        report_metadata: dict | None = None,
+        conversation_history: list[LLMMessage] | None = None,
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> Iterator[RAGStreamEvent]:
         started = time.perf_counter()
+        report_metadata = report_metadata or {}
         context = self.context_builder.build(retrieval_result)
         citations = self.citation_builder.build(context)
         yield RAGStreamEvent(event="start")
@@ -143,6 +152,7 @@ class AnswerGenerator:
             latency = time.perf_counter() - started
             report = RAGReport(
                 retrieval_report=retrieval_result.report,
+                **report_metadata,
                 context_tokens=0,
                 context_sources=0,
                 context_truncated=False,
@@ -163,6 +173,7 @@ class AnswerGenerator:
         request = self.prompt_builder.build(
             question=question,
             context=context,
+            conversation_history=conversation_history,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -207,6 +218,7 @@ class AnswerGenerator:
         latency = time.perf_counter() - started
         report = RAGReport(
             retrieval_report=retrieval_result.report,
+            **report_metadata,
             context_tokens=context.token_count,
             context_sources=len(context.sources),
             context_truncated=context.truncated,

@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.exceptions import AppError
 from app.core.config import settings
 from app.services.auth import AuthService, AuthUser
+from app.services.conversation import ConversationContextService
 from app.services.document import DocumentService
 from app.services.chat_history import ChatHistoryService
 from app.services.health import HealthService
@@ -51,6 +52,10 @@ def get_job_service(request: Request) -> JobService:
 
 def get_chat_history_service(request: Request) -> ChatHistoryService:
     return _get_state_service(request, "chat_history_service")
+
+
+def get_conversation_context_service(request: Request) -> ConversationContextService:
+    return _get_state_service(request, "conversation_context_service")
 
 
 def get_settings_service(request: Request) -> SettingsService:

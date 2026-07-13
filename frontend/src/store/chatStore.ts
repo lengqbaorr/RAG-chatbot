@@ -2,6 +2,17 @@ import { create } from "zustand";
 
 import type { SourceCitation } from "@/types/api";
 
+export type DocumentPreviewTarget = {
+  source_id: string;
+  source_name: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  section_title?: string | null;
+  chunk_id?: string | null;
+  score?: number | null;
+  content_preview?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -15,7 +26,7 @@ export type ChatMessage = {
 
 type ChatState = {
   messages: ChatMessage[];
-  activeSource: SourceCitation | null;
+  activeSource: DocumentPreviewTarget | null;
   selectedSourceIds: string[];
   activeSessionId: string | null;
   isStreaming: boolean;
@@ -25,7 +36,7 @@ type ChatState = {
   setMessages: (messages: ChatMessage[]) => void;
   setActiveSessionId: (sessionId: string | null) => void;
   setStreaming: (streaming: boolean) => void;
-  setActiveSource: (source: SourceCitation | null) => void;
+  setActiveSource: (source: DocumentPreviewTarget | SourceCitation | null) => void;
   setSelectedSourceIds: (sourceIds: string[]) => void;
   toggleSelectedSource: (sourceId: string) => void;
 };

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from app.db import Database
 from app.core.config import Settings, settings
+from app.services.conversation import ConversationContextService
 from app.services.chunking import ChunkingConfig, DocumentChunker
 from app.services.chat_history import ChatHistoryRepository, ChatHistoryService
 from app.services.embedding import (
@@ -45,6 +46,7 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     job_service = JobService(job_repository)
     chat_history_repository = ChatHistoryRepository(database)
     chat_history_service = ChatHistoryService(chat_history_repository)
+    conversation_context_service = ConversationContextService(chat_history_service)
     settings_repository = SettingsRepository(database)
     settings_service = SettingsService(repository=settings_repository, config=config)
 
@@ -124,6 +126,8 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
             top_k=config.default_top_k,
             fetch_k=config.default_fetch_k,
             min_score=config.default_min_score,
+            fallback_min_score=config.retrieval_fallback_min_score,
+            enable_empty_retrieval_fallback=config.retrieval_fallback_enabled,
         ),
     )
 
@@ -173,6 +177,7 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
         database=database,
         job_service=job_service,
         upload_dir=config.upload_dir,
+        reranker_service=rag_pipeline.reranker_service,
     )
 
     app.state.database = database
@@ -181,6 +186,7 @@ def build_services(app: FastAPI, config: Settings = settings) -> None:
     app.state.job_service = job_service
     app.state.chat_history_repository = chat_history_repository
     app.state.chat_history_service = chat_history_service
+    app.state.conversation_context_service = conversation_context_service
     app.state.settings_repository = settings_repository
     app.state.settings_service = settings_service
     app.state.embedding_service = embedding_service

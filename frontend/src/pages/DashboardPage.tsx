@@ -42,6 +42,52 @@ export function DashboardPage() {
           <div>Collection: {health.data?.collection ?? "none"}</div>
         </div>
       </div>
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Model runtime</h3>
+          {health.isLoading ? <Spinner /> : null}
+        </div>
+        <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+          <ModelStatus
+            label="Embedding"
+            model={health.data?.embedding_model}
+            loaded={health.data?.embedding_model_loaded}
+            cached={health.data?.embedding_model_cached}
+          />
+          <ModelStatus
+            label="Reranker"
+            model={health.data?.reranker_model}
+            loaded={health.data?.reranker_model_loaded}
+            cached={health.data?.reranker_model_cached}
+            unavailable={!health.data?.reranker_available}
+          />
+        </div>
+      </div>
     </section>
+  );
+}
+
+function ModelStatus({
+  label,
+  model,
+  loaded,
+  cached,
+  unavailable = false,
+}: {
+  label: string;
+  model?: string | null;
+  loaded?: boolean;
+  cached?: boolean;
+  unavailable?: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-medium">{label}</div>
+        <StatusPill status={unavailable ? "unavailable" : loaded ? "loaded" : cached ? "cached" : "not cached"} />
+      </div>
+      <div className="mt-2 break-all text-muted-foreground">{model ?? "none"}</div>
+    </div>
   );
 }

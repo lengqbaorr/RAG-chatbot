@@ -41,6 +41,14 @@ RERANKER_ENABLED=false
 RERANKER_MODEL="BAAI/bge-reranker-v2-m3"
 ```
 
+Retrieval fallback giúp tự thử lại với ngưỡng thấp hơn nếu lần đầu không tìm thấy context:
+
+```env
+DEFAULT_MIN_SCORE=0.70
+RETRIEVAL_FALLBACK_ENABLED=true
+RETRIEVAL_FALLBACK_MIN_SCORE=0.55
+```
+
 Tải trước reranker nếu không muốn request chat đầu tiên bị treo lâu:
 
 ```powershell
@@ -65,6 +73,7 @@ Copy-Item .env.example .env
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_AUTH_MODE=disabled
 ```
 
 ## 3. Chạy Chương Trình

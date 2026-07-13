@@ -2,7 +2,7 @@
 
 ## 1. Product Overview
 
-RAG Chatbot la ung dung hoi dap tai lieu ca nhan gom FastAPI backend va React frontend. He thong cho phep nguoi dung upload tai lieu, index tai lieu vao vector store, chon source can hoi, chat streaming voi LLM va xem lai citation/document preview.
+RAG Chatbot la ung dung hoi dap tai lieu ca nhan gom FastAPI backend va React frontend. He thong cho phep nguoi dung upload tai lieu, index tai lieu vao vector store, chon source can hoi, chat streaming voi LLM, xem source tot nhat cho cau tra loi va mo document preview de kiem chung.
 
 Muc tieu kien truc hien tai:
 
@@ -44,6 +44,7 @@ FastAPI
   +-- Chat API + SSE Stream API
   |     |
   |     +-- ChatHistoryService
+  |     +-- ConversationContextService
   |     +-- RAGPipeline
   |           |
   |           +-- RetrieverService
@@ -56,6 +57,16 @@ FastAPI
         |
         +-- JobService
         +-- SQLite metadata DB
+
+  +-- Settings API
+  |     |
+  |     +-- Runtime settings
+  |     +-- SQLite user_settings
+  |
+  +-- Model/System Status
+        |
+        +-- HealthService
+        +-- Embedding/reranker loaded and cached status
 ```
 
 ## 3. Runtime Stack
@@ -118,6 +129,10 @@ FastAPI registers the same routes at root and `/api/v1`:
 - `GET /settings`
 - `PATCH /settings`
 - `POST /settings/reset`
+
+Runtime model operations:
+
+- `python -m app.cli.preload_reranker --clean-incomplete`
 
 ## 5. Core Backend Layers
 
@@ -255,11 +270,13 @@ Behavior:
 - URL PDF redirects to the original remote URL.
 - Text-like documents use stored chunk text.
 - Legacy non-PDF documents can fallback to loader-based preview.
-- Retrieved chunk is returned separately and highlighted in frontend.
+- Retrieved chunk is returned separately and can be used for text highlight.
+- The preview dialog is mounted at the app layout level, so it can be opened from Chat, Sources and Documents pages.
+- The UI does not show a separate extracted passage block by default; it navigates/highlights inside the document instead.
 
 Current limitation:
 
-- PDF preview opens the correct page, but does not highlight exact PDF coordinates because bounding boxes are not stored yet.
+- PDF preview opens the correct page with `#page=N`, but does not highlight exact PDF coordinates because bounding boxes are not stored yet.
 
 ## 8. Indexing Platform
 
@@ -476,6 +493,14 @@ Reranking:
 - Does not call vector store or LLM.
 - Disabled by default to avoid loading a cross-encoder model unless explicitly enabled.
 - When enabled, RAGPipeline retrieves more candidates, reranks them, then passes final top K to ContextBuilder.
+- Default reranker model is `BAAI/bge-reranker-v2-m3`.
+- RerankerService uses conservative score fusion instead of trusting rerank score alone:
+
+```text
+fused_score = original_retrieval_score * 0.65 + normalized_rerank_score * 0.35
+```
+
+- If reranker fails, RAGPipeline falls back to the original retrieval result.
 
 Evaluation:
 
@@ -484,7 +509,62 @@ Evaluation:
 - Supports Recall@K, Precision@K, MRR, citation accuracy and keyword coverage.
 - Does not use LLM as judge in baseline.
 
-## 15. RAG Answer Pipeline
+## 15. Conversation Context Layer
+
+Location:
+
+- `app/services/conversation`
+- `app/services/chat_history`
+- `app/api/routes/chat.py`
+
+Purpose:
+
+- Give follow-up questions semantic continuity across turns.
+- Keep the user-visible question unchanged.
+- Build a separate retrieval query that includes recent conversation context when the new question looks like a follow-up.
+- Pass recent user/assistant turns into PromptBuilder so the LLM can obey the local conversation flow.
+
+Runtime flow:
+
+```text
+User question
+  |
+  v
+ChatHistoryService saves user message
+  |
+  v
+ConversationContextService loads recent completed messages
+  |
+  +-- standalone question -> retrieval_query = original question
+  |
+  +-- follow-up question -> retrieval_query = question + previous anchor
+  |
+  v
+RAGPipeline retrieves with retrieval_query
+  |
+  v
+PromptBuilder sends original question + retrieved context + short chat history
+```
+
+Report metadata:
+
+- `original_question`
+- `retrieval_query`
+- `query_rewritten`
+- `used_history_messages`
+
+Current behavior:
+
+- Baseline rewrite is deterministic and rule-based.
+- No LLM is used to rewrite the query.
+- The latest user message is excluded from context while resolving the current question, so the resolver does not anchor on itself.
+- Reranker, when enabled, uses the same resolved retrieval query as the retriever.
+
+Known limitation:
+
+- Rule-based follow-up detection is a conservative baseline. It improves short/pronoun follow-ups such as "No khac BM25 the nao?" but is not a full conversational query rewriting model.
+
+## 16. RAG Answer Pipeline
 
 Location:
 
@@ -495,6 +575,9 @@ Pipeline:
 
 ```text
 Question
+  |
+  v
+ConversationContextService
   |
   v
 RetrieverService
@@ -515,6 +598,22 @@ CitationBuilder
 RAGAnswer
 ```
 
+Retrieval fallback:
+
+- If first retrieval returns zero final results and `min_score` is above fallback score, RAGPipeline retries once with a lower threshold.
+- Current defaults:
+
+```text
+DEFAULT_MIN_SCORE = 0.70
+RETRIEVAL_FALLBACK_MIN_SCORE = 0.55
+```
+
+- When fallback succeeds, retrieval report strategy is marked, for example:
+
+```text
+parent_child+fallback_0.55
+```
+
 Current LLM provider:
 
 - Gemini
@@ -528,7 +627,7 @@ Provider boundary:
 
 PromptBuilder does not call LLM. LLMProvider does not know retriever/vector store.
 
-## 16. Streaming Chat
+## 17. Streaming Chat
 
 Endpoint:
 
@@ -552,8 +651,9 @@ Behavior:
 - User can cancel request through AbortController.
 - Final `complete` event carries answer, sources and report.
 - Sources are shown in the Sources panel, not inline inside the answer.
+- The UI warns when LLM finish reason is `MAX_TOKENS`.
 
-## 17. Local Authentication
+## 18. Local Authentication
 
 Location:
 
@@ -567,6 +667,8 @@ Current auth mode:
 
 - Single local user.
 - Optional through `AUTH_ENABLED`.
+- Frontend auth gate is disabled by default through `VITE_AUTH_MODE=disabled`.
+- To enable login UI, set `VITE_AUTH_MODE=server` and backend `AUTH_ENABLED=true`.
 - Username/password are read from `.env`.
 - Backend issues a signed HMAC bearer token with expiration.
 - Frontend stores token in local storage and sends `Authorization: Bearer ...`.
@@ -587,7 +689,7 @@ Protected product endpoints:
 
 This is a baseline security layer for local/private deployment. It prepares the codebase for future multi-user auth by keeping auth at the API/dependency boundary.
 
-## 18. Chat History
+## 19. Chat History
 
 Location:
 
@@ -606,6 +708,8 @@ Backend stores:
 - message status
 - timestamps
 
+Chat history is also used by `ConversationContextService` to resolve follow-up questions before retrieval and prompt generation.
+
 Message status:
 
 - `completed`
@@ -622,7 +726,7 @@ Frontend supports:
 - Restore selected documents for a session
 - Show cancelled/failed warning for historical assistant messages
 
-## 19. Settings Persistence
+## 20. Settings Persistence
 
 Location:
 
@@ -662,7 +766,21 @@ Persisted settings:
 
 Streaming is still a frontend UX preference stored locally because it controls transport behavior rather than backend generation configuration.
 
-## 20. Frontend Architecture
+Current latency-oriented defaults:
+
+```text
+DEFAULT_TOP_K=3
+DEFAULT_FETCH_K=8
+DEFAULT_MIN_SCORE=0.70
+RETRIEVAL_FALLBACK_ENABLED=true
+RETRIEVAL_FALLBACK_MIN_SCORE=0.55
+RERANKER_ENABLED=false
+LLM_MAX_TOKENS=2048
+EMBEDDING_LOCAL_FILES_ONLY=true
+RERANKER_LOCAL_FILES_ONLY=true
+```
+
+## 21. Frontend Architecture
 
 Location:
 
@@ -694,9 +812,11 @@ Chat UI:
 - Left sidebar: navigation and chat history.
 - Center: conversation.
 - Right panel: selected sources and retrieved citations.
-- Modal: document preview.
+- Global modal: document preview.
+- Documents page can open preview directly.
+- Source panel can open preview directly without changing source selection.
 
-## 21. Source Selection and Citations
+## 22. Source Selection and Citations
 
 User selects documents in the Sources panel. Selection behavior:
 
@@ -722,15 +842,27 @@ Retrieved citations are returned as structured objects:
 - `score`
 - `content_preview`
 
-## 22. Health and Observability
+Frontend behavior:
+
+- The Sources panel shows only the best source for the latest answer, selected by highest score.
+- The UI no longer displays multiple retrieved sources by default.
+- The UI does not display raw `content_preview` as a separate citation text block.
+- Clicking the best source opens the document preview and navigates to the chunk page when possible.
+
+## 23. Health and Observability
 
 Health endpoints report:
 
 - app status
 - database status
 - embedding service status
+- embedding model name
+- embedding model loaded/cached flags
 - vector store status
 - LLM provider
+- reranker model name
+- reranker loaded/cached flags
+- reranker availability
 - upload directory
 - free disk space
 - Chroma collection
@@ -750,7 +882,7 @@ Logging includes:
 
 Secrets and full document content are not logged.
 
-## 23. Current Production Boundaries
+## 24. Current Production Boundaries
 
 What is production-ready baseline:
 
@@ -759,6 +891,11 @@ What is production-ready baseline:
 - Chat uses streaming and persistent session history.
 - Source selection is explicit.
 - Citation preview works for PDF/text-like documents.
+- Best-source navigation opens the source document/page.
+- Retrieval fallback reduces false "not found" when `min_score` is too strict.
+- Runtime settings are persisted in SQLite and hydrated into frontend.
+- Model runtime status exposes cached/loaded state for embedding and reranker.
+- Follow-up questions can use recent chat history for retrieval and answer generation.
 - Tests cover core API/service flows.
 
 Known limitations:
@@ -768,9 +905,11 @@ Known limitations:
 - File storage is local disk.
 - PDF preview does not yet store bounding boxes for exact highlight.
 - Authentication is local single-user baseline, not OAuth/multi-user yet.
-- Reranker exists but is not wired as the default product chat path.
+- Reranker is wired as an optional product chat feature, but disabled by default for latency.
+- Model download progress is not streamed to the UI yet; users should preload reranker from CLI.
+- Conversation rewrite is deterministic/rule-based, not LLM-based.
 
-## 24. Upgrade Path
+## 25. Upgrade Path
 
 PostgreSQL:
 
