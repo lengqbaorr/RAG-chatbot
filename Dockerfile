@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1.7
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
     TESSERACT_CMD=/usr/bin/tesseract \
     OCR_LANGUAGES=eng+vie \
     HF_HOME=/app/data/hf_cache \
@@ -23,8 +26,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip \
-    && pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip --retries 10 --timeout 120 \
+    && pip install -r requirements.txt --retries 10 --timeout 120
 
 COPY app ./app
 
