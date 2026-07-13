@@ -12,7 +12,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy on self-hosted Windows runner
-    runs-on: [self-hosted, Windows, rag-chatbot]
+    runs-on: [self-hosted, Windows]
     defaults:
       run:
         shell: pwsh
