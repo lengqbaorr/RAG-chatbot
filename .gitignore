@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+deploy/docker.env
 
 # Virtualenv and Python cache
 .venv/

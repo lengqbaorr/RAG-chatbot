@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./deploy/docker.env
+    environment:
+      CHROMA_PATH: /app/data/chroma
+      METADATA_DB_PATH: /app/data/metadata.db
+      EMBEDDING_CACHE_PATH: /app/data/embeddings.db
+      UPLOAD_DIR: /app/data/raw
+      TESSERACT_CMD: /usr/bin/tesseract
+      OCR_LANGUAGES: eng+vie
+      CORS_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+      CORS_ORIGIN_REGEX: http://(localhost|127\.0\.0\.1)(:\d+)?
+    ports:
+      - "8000:8000"
+    volumes:
+      - rag_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; raise SystemExit(0 if requests.get('http://127.0.0.1:8000/health/ready', timeout=5).ok else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_AUTH_MODE: disabled
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  rag_data:

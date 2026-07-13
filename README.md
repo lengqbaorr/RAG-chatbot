@@ -99,7 +99,66 @@ Mở trình duyệt:
 http://127.0.0.1:5173
 ```
 
-## 4. Kiểm Tra Nhanh
+## 4. Chạy Bằng Docker Compose
+
+Yêu cầu:
+
+- Docker Desktop
+- Gemini API key
+
+Tạo env Docker:
+
+```powershell
+cd D:\RAG-chatbot
+Copy-Item deploy\docker.env.example deploy\docker.env
+```
+
+Cập nhật trong `deploy/docker.env`:
+
+```env
+GEMINI_API_KEY=your_key_here
+```
+
+Build và chạy:
+
+```powershell
+docker compose build
+docker compose up -d
+```
+
+Mở frontend:
+
+```text
+http://127.0.0.1:8080
+```
+
+Backend health:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Xem log:
+
+```powershell
+docker compose logs -f backend
+```
+
+Dừng:
+
+```powershell
+docker compose down
+```
+
+Xóa cả dữ liệu Docker volume:
+
+```powershell
+docker compose down -v
+```
+
+Lưu ý: Docker phase hiện tại dùng SQLite + ChromaDB embedded trong volume `rag_data`. PostgreSQL sẽ là phase tiếp theo.
+
+## 5. Kiểm Tra Nhanh
 
 Backend health:
 
@@ -113,7 +172,7 @@ Swagger:
 http://127.0.0.1:8000/docs
 ```
 
-## 5. Build/Test
+## 6. Build/Test
 
 ```powershell
 cd D:\RAG-chatbot
@@ -123,4 +182,72 @@ cd D:\RAG-chatbot
 ```powershell
 cd D:\RAG-chatbot\frontend
 npm run build
+```
+
+## 7. CI/CD + Deploy
+
+CI đã có tại:
+
+```text
+.github/workflows/ci.yml
+```
+
+CI chạy:
+
+- Backend tests
+- Frontend build
+- Docker build backend/frontend
+
+Deploy khuyến nghị cho máy Windows đang chạy Docker Desktop:
+
+```text
+.github/workflows/deploy-windows-runner.yml
+```
+
+Workflow này chạy trên GitHub Actions self-hosted runner đặt trên chính máy Windows deploy. Nó sẽ:
+
+- Checkout code mới.
+- Ghi `deploy/docker.env` từ GitHub Secret.
+- `docker compose build`.
+- `docker compose up -d`.
+- Kiểm tra `/health/ready`.
+
+GitHub Secret cần tạo:
+
+```text
+DOCKER_ENV
+```
+
+Giá trị của `DOCKER_ENV` là toàn bộ nội dung file `deploy/docker.env`, bao gồm `GEMINI_API_KEY`.
+
+Runner labels cần có:
+
+```text
+self-hosted
+Windows
+rag-chatbot
+```
+
+Sau khi cấu hình runner, deploy bằng:
+
+```text
+GitHub → Actions → Deploy Windows Docker Compose → Run workflow
+```
+
+Hoặc push vào `main/master`, workflow sẽ tự deploy.
+
+Deploy qua SSH/server nằm ở:
+
+```text
+.github/workflows/deploy-compose.yml
+```
+
+Cần cấu hình GitHub Secrets nếu dùng SSH deploy:
+
+```text
+DEPLOY_HOST
+DEPLOY_USER
+DEPLOY_SSH_KEY
+DEPLOY_PORT
+DEPLOY_PATH
 ```

@@ -911,6 +911,39 @@ Known limitations:
 
 ## 25. Upgrade Path
 
+Current Docker baseline:
+
+- Backend container from root `Dockerfile`.
+- Frontend static container from `frontend/Dockerfile`.
+- Nginx inside frontend container serves React and proxies `/api` to backend.
+- `docker-compose.yml` runs `backend` and `frontend`.
+- Named volume `rag_data` persists:
+  - SQLite metadata DB
+  - embedding cache DB
+  - ChromaDB embedded data
+  - raw uploads
+  - Hugging Face model cache
+
+Current Docker command flow:
+
+```text
+copy deploy/docker.env.example -> deploy/docker.env
+set GEMINI_API_KEY
+docker compose build
+docker compose up -d
+```
+
+CI/CD:
+
+- `.github/workflows/ci.yml` runs backend tests, frontend build and Docker image build.
+- `.github/workflows/deploy-windows-runner.yml` deploys to a Windows machine with Docker Desktop through a GitHub Actions self-hosted runner.
+- `.github/workflows/deploy-compose.yml` is an optional manual SSH deployment workflow for machines that run Docker Compose.
+
+Database note:
+
+- The deploy baseline still uses SQLite because the current repository layer is SQLite-specific.
+- PostgreSQL requires a repository/database migration phase, not only adding a Postgres container.
+
 PostgreSQL:
 
 - Keep repository contracts.

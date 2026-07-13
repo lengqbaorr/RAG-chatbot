@@ -1,0 +1,61 @@
+name: Deploy Windows Docker Compose
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main", "master"]
+
+concurrency:
+  group: windows-docker-compose-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy on self-hosted Windows runner
+    runs-on: [self-hosted, Windows, rag-chatbot]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write Docker env
+        env:
+          DOCKER_ENV_CONTENT: ${{ secrets.DOCKER_ENV }}
+        run: |
+          New-Item -ItemType Directory -Force -Path deploy | Out-Null
+          Set-Content -Path deploy/docker.env -Value $env:DOCKER_ENV_CONTENT -Encoding UTF8
+
+      - name: Show Docker version
+        run: |
+          docker version
+          docker compose version
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for backend readiness
+        run: |
+          $ready = $false
+          for ($i = 0; $i -lt 40; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health/ready" -TimeoutSec 5
+              if ($response.StatusCode -eq 200) {
+                $ready = $true
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $ready) {
+            docker compose logs --tail=200 backend
+            throw "Backend did not become ready"
+          }
+
+      - name: Show service status
+        run: docker compose ps
