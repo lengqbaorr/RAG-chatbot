@@ -6,6 +6,7 @@ deploy/docker.env
 
 # Virtualenv and Python cache
 .venv/
+actions-runner/
 __pycache__/
 *.py[cod]
 .pytest_cache/
