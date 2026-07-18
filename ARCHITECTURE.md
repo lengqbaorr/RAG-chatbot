@@ -1,106 +1,144 @@
 # RAG Chatbot Architecture
 
-## 1. Product Overview
+Tai lieu nay mo ta kien truc codebase hien tai cua RAG Chatbot. Noi dung duoc viet theo trang thai da implement, khong tron lan voi roadmap. Nhung muc roadmap duoc tach rieng o cuoi file.
 
-RAG Chatbot la ung dung hoi dap tai lieu ca nhan gom FastAPI backend va React frontend. He thong cho phep nguoi dung upload tai lieu, index tai lieu vao vector store, chon source can hoi, chat streaming voi LLM, xem source tot nhat cho cau tra loi va mo document preview de kiem chung.
+## 1. Product Scope
 
-Muc tieu kien truc hien tai:
+RAG Chatbot la ung dung hoi dap tai lieu ca nhan gom:
 
-- Frontend tach rieng backend.
-- FastAPI chi la transport/interface layer.
-- Business logic nam trong service layer.
-- Khong dung LangChain/LlamaIndex lam core runtime.
-- SQLite quan ly metadata nghiep vu.
-- ChromaDB chi quan ly vector va metadata retrieval.
-- Embedding/LLM/VectorStore deu nam sau provider/interface rieng.
-- Chat history, document lifecycle va indexing job duoc luu rieng trong database.
+- FastAPI backend.
+- React/Vite frontend.
+- Document upload va indexing.
+- Loader da dinh dang.
+- Chunking + parent-child chunking.
+- BGE-M3 embedding.
+- SQLite embedding cache.
+- ChromaDB vector store.
+- Retriever + optional reranker.
+- Gemini LLM provider.
+- Streaming chat bang Server-Sent Events.
+- Persistent chat history.
+- Document/source preview.
+- Docker Compose deploy local/private.
+- GitHub Actions CI/CD qua self-hosted Windows runner.
 
-## 2. System Diagram
+He thong hien tai phu hop cho local/private deployment va demo qua Cloudflare Tunnel. No chua phai SaaS multi-user cloud-native hoan chinh.
+
+## 2. High-Level Runtime
 
 ```text
 Browser
   |
   v
-React + TypeScript + Vite
+React Frontend
+  |
+  | HTTP / SSE
+  v
+FastAPI Backend
+  |
+  +-- Auth / Settings / Health APIs
+  +-- Document APIs
+  +-- Job APIs
+  +-- Chat APIs
   |
   v
-FastAPI
+Service Layer
   |
-  +-- Health API
+  +-- Loader
+  +-- Chunker
+  +-- Embedding
+  +-- VectorStore
+  +-- Retriever
+  +-- RAG Pipeline
+  +-- LLM Provider
   |
-  +-- Document API
-  |     |
-  |     +-- DocumentService
-  |     +-- DocumentRepository
-  |     +-- SQLite metadata DB
+  v
+Local Persistence
   |
-  +-- Upload/Reindex API
-  |     |
-  |     +-- IndexingService
-  |     +-- IndexJobService
-  |     +-- BackgroundWorker
-  |     +-- Loader -> Chunker -> Embedding -> ChromaDB
-  |
-  +-- Chat API + SSE Stream API
-  |     |
-  |     +-- ChatHistoryService
-  |     +-- ConversationContextService
-  |     +-- RAGPipeline
-  |           |
-  |           +-- RetrieverService
-  |           +-- ContextBuilder
-  |           +-- PromptBuilder
-  |           +-- LLMService / GeminiProvider
-  |           +-- CitationBuilder
-  |
-  +-- Jobs API
-        |
-        +-- JobService
-        +-- SQLite metadata DB
-
-  +-- Settings API
-  |     |
-  |     +-- Runtime settings
-  |     +-- SQLite user_settings
-  |
-  +-- Model/System Status
-        |
-        +-- HealthService
-        +-- Embedding/reranker loaded and cached status
+  +-- SQLite metadata DB
+  +-- SQLite embedding cache
+  +-- ChromaDB embedded data
+  +-- Local raw files
 ```
 
-## 3. Runtime Stack
+Docker deployment:
 
-Backend:
+```text
+Browser
+  |
+  v
+frontend container: Nginx + React static build
+  |
+  | /api/v1 proxied by Nginx
+  v
+backend container: FastAPI/Uvicorn
+  |
+  v
+Docker volume: rag_data
+  |
+  +-- /app/data/metadata.db
+  +-- /app/data/embeddings.db
+  +-- /app/data/chroma
+  +-- /app/data/raw
+  +-- /app/data/hf_cache
+```
 
-- FastAPI
-- SQLite metadata database
-- ChromaDB vector database
-- BGE-M3 embedding provider
-- Gemini LLM provider
-- Tesseract OCR
-- Background indexing worker
+Public demo:
 
-Frontend:
+```text
+Internet user
+  |
+  v
+Cloudflare Tunnel quick URL
+  |
+  v
+http://127.0.0.1:8080 on local Windows machine
+  |
+  v
+Docker Compose frontend/backend
+```
 
-- React
-- TypeScript
-- Vite
-- TailwindCSS
-- TanStack Query
-- Zustand
-- React Router
-- Framer Motion
-- React Markdown
+## 3. Repository Layout
+
+Important paths:
+
+```text
+app/
+  api/                  FastAPI routes, schemas, dependencies
+  core/                 config, startup, logging, exception mapping
+  db/                   SQLite database wrapper and migrations
+  services/             business logic
+  main.py               ASGI entrypoint
+
+frontend/
+  src/                  React application
+  Dockerfile            production frontend image
+  nginx.conf            static serving + API proxy
+
+deploy/
+  docker.env.example    Docker env template, no secrets
+
+.github/workflows/
+  ci.yml
+  deploy-windows-runner.yml
+  deploy-compose.yml
+
+Dockerfile              backend image
+docker-compose.yml      local/private deploy stack
+DEPLOYMENT.md           deployment guide
+README.md               runbook
+```
 
 ## 4. Backend Entry Points
 
-Primary app entry:
+Main entry:
 
 - `app/main.py`
 - `app/api/main.py`
 
-FastAPI registers the same routes at root and `/api/v1`:
+FastAPI registers all routes both at root and `/api/v1`.
+
+Main endpoints:
 
 - `GET /health`
 - `GET /health/ready`
@@ -130,30 +168,11 @@ FastAPI registers the same routes at root and `/api/v1`:
 - `PATCH /settings`
 - `POST /settings/reset`
 
-Runtime model operations:
+Runtime CLI:
 
 - `python -m app.cli.preload_reranker --clean-incomplete`
 
-## 5. Core Backend Layers
-
-### 5.1 API Layer
-
-Location:
-
-- `app/api/routes`
-- `app/api/schemas`
-- `app/api/dependencies.py`
-
-Responsibility:
-
-- Validate HTTP input.
-- Convert request/response schemas.
-- Resolve services through dependency injection.
-- Return stable API contracts for frontend.
-
-Routes do not call ChromaDB, Gemini, BGE-M3, chunker or loader directly.
-
-### 5.2 Core Layer
+## 5. Core Layer
 
 Location:
 
@@ -162,22 +181,93 @@ Location:
 - `app/core/logging.py`
 - `app/core/exceptions.py`
 
-Responsibility:
+Responsibilities:
 
-- Load `.env` settings.
-- Initialize singleton services on lifespan startup.
+- Load `.env` for local Python runtime.
+- Initialize service singletons during FastAPI lifespan.
 - Configure CORS.
 - Install request logging middleware.
-- Register exception-to-HTTP mappings.
+- Map domain exceptions to stable HTTP errors.
+- Stop background indexing worker during shutdown.
 
-### 5.3 Database Layer
+`build_services()` in `app/core/startup.py` wires the runtime graph:
+
+```text
+Database
+  -> repositories
+  -> services
+  -> loader/chunker/embedding/vectorstore
+  -> retriever
+  -> RAG pipeline
+  -> FastAPI app.state
+```
+
+FastAPI routes retrieve services from `app.state` through `app/api/dependencies.py`.
+
+## 6. Configuration
+
+Local dev reads:
+
+- `.env`
+
+Docker Compose reads:
+
+- `deploy/docker.env`
+
+Templates:
+
+- `.env.example`
+- `deploy/docker.env.example`
+
+Important environment variables:
+
+```text
+GEMINI_API_KEY
+CHROMA_PATH
+CHROMA_COLLECTION
+METADATA_DB_PATH
+EMBEDDING_CACHE_PATH
+UPLOAD_DIR
+EMBEDDING_MODEL
+EMBEDDING_DIMENSION
+EMBEDDING_LOCAL_FILES_ONLY
+LLM_MODEL
+LLM_MAX_TOKENS
+DEFAULT_TOP_K
+DEFAULT_FETCH_K
+DEFAULT_MIN_SCORE
+RETRIEVAL_FALLBACK_ENABLED
+RERANKER_ENABLED
+RERANKER_MODEL
+AUTH_ENABLED
+AUTH_LOCAL_USERNAME
+AUTH_LOCAL_PASSWORD
+AUTH_SECRET_KEY
+```
+
+Security:
+
+- `.env` is ignored.
+- `deploy/docker.env` is ignored.
+- `deploy/docker.env.example` is committed and must not contain secrets.
+- GitHub Actions deploy writes `deploy/docker.env` from secret `DOCKER_ENV`.
+
+## 7. Database and Metadata Store
 
 Location:
 
 - `app/db/database.py`
-- `app/db/migrations`
+- `app/db/migrations/001_initial.sql`
+- `app/services/document/repository.py`
+- `app/services/jobs/repository.py`
+- `app/services/chat_history/repository.py`
+- `app/services/settings/repository.py`
 
-SQLite is the current metadata store. It stores product/domain data, not embeddings.
+Current implementation:
+
+- SQLite.
+- One local metadata DB file.
+- Lightweight compatible migrations are applied by initializer.
 
 Main tables:
 
@@ -186,14 +276,30 @@ Main tables:
 - `index_jobs`
 - `chat_sessions`
 - `chat_messages`
+- `user_settings`
 
-The database initializer also performs lightweight compatible migrations for existing local DB files.
+SQLite stores product/business metadata:
 
-## 6. Document Management
+- document lifecycle
+- chunk metadata and preview content
+- indexing jobs
+- chat history
+- selected sources
+- runtime settings
+
+SQLite does not store vector embeddings except the separate embedding cache DB.
+
+Current limitation:
+
+- Repository layer is SQLite-specific.
+- PostgreSQL/Supabase requires repository/database migration work.
+
+## 8. Document Management
 
 Location:
 
 - `app/services/document`
+- `app/api/routes/documents.py`
 
 Main classes:
 
@@ -204,19 +310,13 @@ Main classes:
 - `DocumentPreview`
 - `DocumentChunkPreview`
 
-Responsibility:
+Document lifecycle:
 
-- Manage document metadata.
-- Track status: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `DELETED`.
-- List documents for frontend.
-- Get document detail.
-- Delete document safely.
-- Provide document preview and citation chunk preview.
-- Store chunk metadata and chunk content for preview.
-
-ChromaDB is not the source of truth for document lifecycle.
-
-### 6.1 Document Metadata
+```text
+PENDING -> RUNNING -> COMPLETED
+                   -> FAILED
+COMPLETED -> DELETED
+```
 
 `documents` stores:
 
@@ -238,8 +338,6 @@ ChromaDB is not the source of truth for document lifecycle.
 - `collection_name`
 - `deleted_at`
 
-### 6.2 Chunk Metadata
-
 `chunks` stores:
 
 - `chunk_id`
@@ -254,44 +352,124 @@ ChromaDB is not the source of truth for document lifecycle.
 - `retrieval_excluded`
 - `content_hash`
 
-`content` is stored so text previews can be loaded from SQLite without re-parsing files.
+Important boundary:
 
-## 7. Document Preview
+- ChromaDB is not the document lifecycle source of truth.
+- SQLite document metadata is the product source of truth.
 
-Preview endpoints:
+## 9. Ingestion and Loader Layer
 
-- `GET /documents/{source_id}/preview`
-- `GET /documents/{source_id}/chunks/{chunk_id}`
-- `GET /documents/{source_id}/file`
+Location:
 
-Behavior:
+- `app/services/ingestion`
 
-- PDF opens through `/file` and browser PDF viewer.
-- URL PDF redirects to the original remote URL.
-- Text-like documents use stored chunk text.
-- Legacy non-PDF documents can fallback to loader-based preview.
-- Retrieved chunk is returned separately and can be used for text highlight.
-- The preview dialog is mounted at the app layout level, so it can be opened from Chat, Sources and Documents pages.
-- The UI does not show a separate extracted passage block by default; it navigates/highlights inside the document instead.
+Supported inputs:
 
-Current limitation:
+- PDF
+- DOCX
+- TXT
+- Markdown
+- URL/HTML
+- Direct PDF URL
+- Image OCR
 
-- PDF preview opens the correct page with `#page=N`, but does not highlight exact PDF coordinates because bounding boxes are not stored yet.
+OCR:
 
-## 8. Indexing Platform
+- Tesseract.
+- Docker image installs `tesseract-ocr-eng` and `tesseract-ocr-vie`.
+- Local Windows uses `TESSERACT_CMD`.
+
+Loader responsibility:
+
+- Load raw source.
+- Extract normalized text.
+- Preserve source metadata.
+- Return internal document objects.
+
+Loader does not:
+
+- chunk
+- embed
+- write vector DB
+- call LLM
+
+## 10. Chunking Pipeline
+
+Location:
+
+- `app/services/chunking`
+
+Main components:
+
+- `normalizers.py`
+- `parsers.py`
+- `splitters.py`
+- `postprocessors.py`
+- `reports.py`
+- `validators.py`
+- `pipeline.py`
+
+Responsibilities:
+
+- Normalize text.
+- Parse page/line/heading structure.
+- Detect content type.
+- Split into child chunks.
+- Build parent chunks.
+- Merge small chunks.
+- Add section context to embedding text.
+- Validate token budget.
+- Produce quality metadata.
+
+Current runtime config in `startup.py`:
+
+```text
+chunk_size_tokens=450
+chunk_overlap_tokens=60
+build_parent_chunks=True
+```
+
+Content types:
+
+- `body`
+- `cover`
+- `toc`
+- `reference`
+- `table`
+- `code`
+
+Retrieval-excluded chunks are skipped by embedding service through:
+
+```text
+skip_retrieval_excluded=True
+```
+
+## 11. Indexing Platform
 
 Location:
 
 - `app/services/indexing`
 - `app/services/jobs`
 
-Upload/indexing flow:
+Main classes:
+
+- `IndexingService`
+- `IndexingPipeline`
+- `InMemoryIndexingQueue`
+- `ThreadedIndexingWorker`
+- `JobService`
+- `JobRepository`
+
+Flow:
 
 ```text
-Upload file or URL
+POST /documents/upload or /documents/url
   |
   v
-Validate and save raw input
+Validate input
+  |
+  v
+Save raw file or URL locator
   |
   v
 Create document record
@@ -300,14 +478,17 @@ Create document record
 Create index job
   |
   v
-Background worker
+Queue task
+  |
+  v
+ThreadedIndexingWorker
   |
   +-- Loading
   +-- Chunking
   +-- Embedding
   +-- VectorStore upsert
   +-- Save chunk metadata
-  +-- Mark document/job completed
+  +-- Mark completed/failed
 ```
 
 Job statuses:
@@ -327,57 +508,13 @@ Job stages:
 - `VectorStore`
 - `Finishing`
 
-Duplicate detection uses:
+Current limitation:
 
-- `sha256`
-- `file_size`
+- Worker is an in-process local thread.
+- It is not Celery/RQ/Redis yet.
+- If backend process stops, in-memory queue is lost.
 
-## 9. Loader Layer
-
-Location:
-
-- `app/services/ingestion`
-
-Supported inputs:
-
-- PDF
-- DOCX
-- TXT
-- Markdown
-- URL/HTML
-- Direct PDF URL
-- Image OCR
-
-OCR:
-
-- Tesseract
-- English and Vietnamese language data
-
-The loader returns normalized internal documents. It does not embed or store vectors.
-
-## 10. Chunking Pipeline
-
-Location:
-
-- `app/services/chunking`
-
-Responsibilities:
-
-- Normalize document text.
-- Parse structure and headings.
-- Detect content type such as body, cover, toc, reference and table.
-- Build child chunks.
-- Build parent chunks for parent-child retrieval.
-- Validate token budget.
-- Generate quality metadata.
-
-Important behaviors:
-
-- Cover/toc/reference chunks can be excluded from retrieval.
-- Section heading context is added to embedding text.
-- Parent-child chunks preserve source/page/citation metadata.
-
-## 11. Embedding Layer
+## 12. Embedding Layer
 
 Location:
 
@@ -385,50 +522,77 @@ Location:
 
 Main provider:
 
-- BGE-M3
+- `BGEM3EmbeddingProvider`
+
+Runtime model:
+
+- default `BAAI/bge-m3`
+- default dimension `1024`
 
 Responsibilities:
 
-- Embed documents/chunks.
-- Embed user query.
-- Validate vector dimension.
+- Build embedding text.
+- Embed chunks.
+- Embed queries.
+- Batch embedding.
+- Validate dimensions.
 - Cache embeddings in SQLite.
-- Hide provider details behind service/provider interface.
+- Hide provider-specific details.
 
-Embedding cache reduces repeated indexing cost when content hash/model version has not changed.
+Cache:
 
-## 12. VectorStore Layer
+- `SQLiteEmbeddingCache`
+- DB path from `EMBEDDING_CACHE_PATH`
+- avoids re-embedding same content/model hash.
+
+Docker:
+
+- Hugging Face cache stored in `/app/data/hf_cache`.
+- Persisted by Docker volume `rag_data`.
+- Do not run `docker compose down -v` unless you intentionally want to delete model/data cache.
+
+Current performance note:
+
+- BGE-M3 on CPU is slow for first load and large indexing jobs.
+- First Docker run may download model from Hugging Face.
+
+## 13. VectorStore Layer
 
 Location:
 
 - `app/services/vectorstore`
 
-Main implementation:
+Current implementation:
 
-- ChromaDB
+- `ChromaVectorStore`
+- embedded/local ChromaDB
 
 Responsibilities:
 
 - Upsert embedded chunks.
 - Similarity search.
 - Delete by `source_id`.
-- Fetch vector record by `chunk_id`.
-- Apply neutral metadata filters from retriever.
+- Fetch by chunk ID.
+- Apply neutral metadata filters.
 
-ChromaDB stores:
+Chroma stores:
 
-- vector
+- vectors
 - retrieval metadata
-- chunk content needed for retrieval/preview fallback
+- text needed by retrieval and fallback preview
 
-ChromaDB does not manage:
+Chroma does not store:
 
-- document status
-- indexing jobs
-- chat history
-- product metadata
+- document lifecycle
+- index job state
+- chat sessions
+- user settings
 
-## 13. Retrieval Layer
+Current limitation:
+
+- Qdrant/Pinecone provider is not implemented yet.
+
+## 14. Retrieval Layer
 
 Location:
 
@@ -442,7 +606,7 @@ Main strategies:
 Pipeline:
 
 ```text
-User query
+RetrievalQuery
   |
   v
 QueryPreprocessor
@@ -451,10 +615,13 @@ QueryPreprocessor
 EmbeddingService.embed_query
   |
   v
-VectorStore similarity_search
+BaseVectorStore.similarity_search
   |
   v
-Threshold / ContentType filter
+ScoreThresholdFilter
+  |
+  v
+ContentTypeFilter
   |
   v
 Deduplicator
@@ -466,7 +633,7 @@ ContextSelector
 RetrievalResult
 ```
 
-Retriever only depends on:
+Retriever depends on:
 
 - `EmbeddingService`
 - `BaseVectorStore`
@@ -478,7 +645,18 @@ Retriever does not call:
 - FastAPI
 - Chroma SDK directly
 
-## 14. Reranking and Evaluation
+Default runtime values:
+
+```text
+DEFAULT_RETRIEVAL_STRATEGY=parent_child
+DEFAULT_TOP_K=3
+DEFAULT_FETCH_K=8
+DEFAULT_MIN_SCORE=0.76
+RETRIEVAL_FALLBACK_ENABLED=true
+RETRIEVAL_FALLBACK_MIN_SCORE=0.55
+```
+
+## 15. Reranking and Evaluation
 
 Location:
 
@@ -487,29 +665,49 @@ Location:
 
 Reranking:
 
-- Optional layer after retrieval in the product chat path.
-- Keeps original retrieval score.
-- Adds rerank score.
-- Does not call vector store or LLM.
-- Disabled by default to avoid loading a cross-encoder model unless explicitly enabled.
-- When enabled, RAGPipeline retrieves more candidates, reranks them, then passes final top K to ContextBuilder.
-- Default reranker model is `BAAI/bge-reranker-v2-m3`.
-- RerankerService uses conservative score fusion instead of trusting rerank score alone:
+- Optional.
+- Disabled by default.
+- Uses cross-encoder reranker when enabled.
+- Default model: `BAAI/bge-reranker-v2-m3`.
+- Reranker keeps original retrieval score.
+- Reranker score is fused conservatively:
 
 ```text
 fused_score = original_retrieval_score * 0.65 + normalized_rerank_score * 0.35
 ```
 
-- If reranker fails, RAGPipeline falls back to the original retrieval result.
+Fallback:
+
+- If reranker fails, RAGPipeline falls back to original retrieval result.
 
 Evaluation:
 
-- Loads local evaluation dataset.
-- Computes retrieval metrics.
-- Supports Recall@K, Precision@K, MRR, citation accuracy and keyword coverage.
-- Does not use LLM as judge in baseline.
+- Local deterministic retrieval benchmark framework.
+- Computes Recall@K, Precision@K, MRR, citation accuracy, keyword coverage.
+- Baseline does not use LLM-as-judge.
+- CLI entrypoint:
 
-## 15. Conversation Context Layer
+```powershell
+python -m app.cli.benchmark --dataset benchmarks\sample_retrieval.jsonl
+```
+
+Benchmark dataset formats:
+
+- JSONL: one case per line.
+- JSON: list of cases or object with `cases`.
+
+Benchmark case fields:
+
+- `id`
+- `question`
+- `expected_source_name`
+- `expected_pages`
+- `expected_section`
+- `expected_keywords`
+- `answerable`
+- `group`
+
+## 16. Conversation Context Layer
 
 Location:
 
@@ -519,12 +717,12 @@ Location:
 
 Purpose:
 
-- Give follow-up questions semantic continuity across turns.
-- Keep the user-visible question unchanged.
-- Build a separate retrieval query that includes recent conversation context when the new question looks like a follow-up.
-- Pass recent user/assistant turns into PromptBuilder so the LLM can obey the local conversation flow.
+- Support follow-up questions.
+- Keep original user question unchanged for answer generation.
+- Build a separate retrieval query enriched by recent conversation.
+- Pass recent user/assistant messages into PromptBuilder.
 
-Runtime flow:
+Flow:
 
 ```text
 User question
@@ -533,38 +731,32 @@ User question
 ChatHistoryService saves user message
   |
   v
-ConversationContextService loads recent completed messages
+ConversationContextService reads recent completed messages
   |
   +-- standalone question -> retrieval_query = original question
   |
-  +-- follow-up question -> retrieval_query = question + previous anchor
+  +-- follow-up question -> retrieval_query = previous anchor + current question
   |
   v
 RAGPipeline retrieves with retrieval_query
   |
   v
-PromptBuilder sends original question + retrieved context + short chat history
+PromptBuilder receives original question + chat history + context
 ```
 
-Report metadata:
+Report fields:
 
 - `original_question`
 - `retrieval_query`
 - `query_rewritten`
 - `used_history_messages`
 
-Current behavior:
+Current limitation:
 
-- Baseline rewrite is deterministic and rule-based.
-- No LLM is used to rewrite the query.
-- The latest user message is excluded from context while resolving the current question, so the resolver does not anchor on itself.
-- Reranker, when enabled, uses the same resolved retrieval query as the retriever.
+- Rewrite is rule-based and deterministic.
+- It is not a full LLM-based query rewriting system.
 
-Known limitation:
-
-- Rule-based follow-up detection is a conservative baseline. It improves short/pronoun follow-ups such as "No khac BM25 the nao?" but is not a full conversational query rewriting model.
-
-## 16. RAG Answer Pipeline
+## 17. RAG Answer Pipeline
 
 Location:
 
@@ -574,13 +766,16 @@ Location:
 Pipeline:
 
 ```text
-Question
+Original question
   |
   v
 ConversationContextService
   |
   v
-RetrieverService
+RetrieverService using retrieval_query
+  |
+  v
+optional Reranker
   |
   v
 ContextBuilder
@@ -598,36 +793,29 @@ CitationBuilder
 RAGAnswer
 ```
 
-Retrieval fallback:
+LLM providers:
 
-- If first retrieval returns zero final results and `min_score` is above fallback score, RAGPipeline retries once with a lower threshold.
-- Current defaults:
-
-```text
-DEFAULT_MIN_SCORE = 0.70
-RETRIEVAL_FALLBACK_MIN_SCORE = 0.55
-```
-
-- When fallback succeeds, retrieval report strategy is marked, for example:
-
-```text
-parent_child+fallback_0.55
-```
-
-Current LLM provider:
-
-- Gemini
-
-Provider boundary:
-
-- `BaseLLMProvider`
 - `GeminiProvider`
 - `OpenRouterProvider`
 - `OllamaProvider`
 
-PromptBuilder does not call LLM. LLMProvider does not know retriever/vector store.
+Current product provider:
 
-## 17. Streaming Chat
+- Gemini
+
+Important boundaries:
+
+- PromptBuilder does not call LLM.
+- LLMProvider does not know retriever/vector store.
+- Retriever does not call LLM.
+- RAGPipeline orchestrates; it does not contain provider-specific details.
+
+Answer output:
+
+- inline `[Source n]` markers are stripped from final answer text.
+- sources are returned as structured citation objects and shown separately in UI.
+
+## 18. Streaming Chat
 
 Endpoint:
 
@@ -644,16 +832,20 @@ Events:
 - `complete`
 - `error`
 
-Behavior:
+Frontend behavior:
 
-- Backend streams LLM text chunks.
-- Frontend renders with a typewriter effect for word/character-level perceived realtime.
-- User can cancel request through AbortController.
-- Final `complete` event carries answer, sources and report.
-- Sources are shown in the Sources panel, not inline inside the answer.
-- The UI warns when LLM finish reason is `MAX_TOKENS`.
+- consumes SSE stream.
+- renders generated text with typewriter-style perceived realtime.
+- supports cancel via AbortController.
+- final event carries answer, sources, report and session ID.
 
-## 18. Local Authentication
+Backend behavior:
+
+- streams LLM provider chunks.
+- filters inline source markers.
+- saves completed/cancelled/failed assistant messages to chat history.
+
+## 19. Authentication
 
 Location:
 
@@ -663,15 +855,17 @@ Location:
 - `frontend/src/pages/LoginPage.tsx`
 - `frontend/src/components/layout/AuthGate.tsx`
 
-Current auth mode:
+Current auth:
 
-- Single local user.
-- Optional through `AUTH_ENABLED`.
-- Frontend auth gate is disabled by default through `VITE_AUTH_MODE=disabled`.
-- To enable login UI, set `VITE_AUTH_MODE=server` and backend `AUTH_ENABLED=true`.
-- Username/password are read from `.env`.
-- Backend issues a signed HMAC bearer token with expiration.
-- Frontend stores token in local storage and sends `Authorization: Bearer ...`.
+- Single local username/password.
+- Optional.
+- Backend controlled by `AUTH_ENABLED`.
+- Frontend controlled by `VITE_AUTH_MODE`.
+- Docker Compose currently builds frontend with:
+
+```text
+VITE_AUTH_MODE=server
+```
 
 Public endpoints:
 
@@ -680,16 +874,27 @@ Public endpoints:
 - `/auth/status`
 - `/auth/login`
 
-Protected product endpoints:
+Protected endpoints when auth is enabled:
 
 - documents
 - jobs
 - chat
 - chat sessions
+- settings
 
-This is a baseline security layer for local/private deployment. It prepares the codebase for future multi-user auth by keeping auth at the API/dependency boundary.
+Token:
 
-## 19. Chat History
+- HMAC-signed bearer token.
+- Stored in frontend local storage.
+- Sent as `Authorization: Bearer ...`.
+
+Current limitation:
+
+- No OAuth.
+- No multi-user account model yet.
+- `owner` fields exist as preparation for future multi-tenancy.
+
+## 20. Chat History
 
 Location:
 
@@ -700,17 +905,15 @@ Location:
 
 Backend stores:
 
-- chat sessions
+- sessions
 - user messages
 - assistant messages
 - selected documents
-- sources/citations
+- citation sources
 - message status
 - timestamps
 
-Chat history is also used by `ConversationContextService` to resolve follow-up questions before retrieval and prompt generation.
-
-Message status:
+Message statuses:
 
 - `completed`
 - `cancelled`
@@ -718,15 +921,14 @@ Message status:
 
 Frontend supports:
 
-- New chat
-- Load previous session
-- Rename session
-- Delete session
-- Persist messages after browser refresh
-- Restore selected documents for a session
-- Show cancelled/failed warning for historical assistant messages
+- new chat
+- load chat sessions
+- rename session
+- delete session
+- restore selected sources
+- persist conversations after browser refresh
 
-## 20. Settings Persistence
+## 21. Settings Persistence
 
 Location:
 
@@ -735,7 +937,7 @@ Location:
 - `frontend/src/pages/SettingsPage.tsx`
 - `frontend/src/store/settingsStore.ts`
 
-Settings flow:
+Flow:
 
 ```text
 Frontend Settings UI
@@ -750,9 +952,7 @@ SettingsService
 SQLite user_settings
 ```
 
-The backend merges `.env` defaults with user overrides stored in SQLite. The frontend hydrates runtime settings after login/app load and uses them for later chat requests.
-
-Persisted settings:
+Persisted runtime settings:
 
 - retrieval strategy
 - top K
@@ -764,23 +964,12 @@ Persisted settings:
 - temperature
 - max tokens
 
-Streaming is still a frontend UX preference stored locally because it controls transport behavior rather than backend generation configuration.
+Settings service merges:
 
-Current latency-oriented defaults:
+- `.env` or Docker env defaults
+- SQLite user overrides
 
-```text
-DEFAULT_TOP_K=3
-DEFAULT_FETCH_K=8
-DEFAULT_MIN_SCORE=0.70
-RETRIEVAL_FALLBACK_ENABLED=true
-RETRIEVAL_FALLBACK_MIN_SCORE=0.55
-RERANKER_ENABLED=false
-LLM_MAX_TOKENS=2048
-EMBEDDING_LOCAL_FILES_ONLY=true
-RERANKER_LOCAL_FILES_ONLY=true
-```
-
-## 21. Frontend Architecture
+## 22. Frontend Architecture
 
 Location:
 
@@ -791,13 +980,24 @@ Location:
 - `frontend/src/pages`
 - `frontend/src/types`
 
-Responsibilities:
+Stack:
+
+- React
+- TypeScript
+- Vite
+- TailwindCSS
+- TanStack Query
+- Zustand
+- React Router
+- Framer Motion
+- React Markdown
+
+Frontend responsibilities:
 
 - API client wraps backend endpoints.
 - TanStack Query handles server state.
-- Zustand handles UI/client state.
-- Components stay small and reusable.
-- Pages compose feature components.
+- Zustand handles local UI/client state.
+- Components are feature-oriented and reusable.
 
 Main screens:
 
@@ -806,32 +1006,32 @@ Main screens:
 - Jobs
 - Chat
 - Settings
+- Login
 
-Chat UI:
+Frontend production:
 
-- Left sidebar: navigation and chat history.
-- Center: conversation.
-- Right panel: selected sources and retrieved citations.
-- Global modal: document preview.
-- Documents page can open preview directly.
-- Source panel can open preview directly without changing source selection.
+- built by `frontend/Dockerfile`.
+- served by Nginx.
+- API calls go to `/api/v1`.
+- `frontend/nginx.conf` proxies `/api/` to backend container.
 
-## 22. Source Selection and Citations
+## 23. Source Selection, Citations, Preview
 
-User selects documents in the Sources panel. Selection behavior:
+Source selection:
 
-- Tick means include the document.
+- Source panel lists uploaded/completed documents.
+- Tick means include document.
 - Untick means exclude only that document.
-- Toggling one document does not auto-select the others.
+- Toggling one source does not auto-toggle others.
 
-Chat request passes:
+Chat request sends:
 
 - `selected_source_ids`
 - neutral `filters.source_id`
 
-Backend also intersects requested source IDs with completed documents, so failed/running/deleted documents are not retrieved.
+Backend intersects selected IDs with completed documents, so failed/running/deleted documents are not retrieved.
 
-Retrieved citations are returned as structured objects:
+Citation payload:
 
 - `source_id`
 - `source_name`
@@ -842,16 +1042,26 @@ Retrieved citations are returned as structured objects:
 - `score`
 - `content_preview`
 
-Frontend behavior:
+UI behavior:
 
-- The Sources panel shows only the best source for the latest answer, selected by highest score.
-- The UI no longer displays multiple retrieved sources by default.
-- The UI does not display raw `content_preview` as a separate citation text block.
-- Clicking the best source opens the document preview and navigates to the chunk page when possible.
+- Shows only the best source for latest answer, selected by highest score.
+- Does not display raw retrieved text as separate citation block.
+- Clicking source opens document preview.
+- PDF preview opens page via browser PDF viewer `#page=N`.
+- Text-like preview uses stored chunk text.
 
-## 23. Health and Observability
+Current limitation:
 
-Health endpoints report:
+- PDF exact highlight coordinates are not stored yet.
+
+## 24. Health and Observability
+
+Location:
+
+- `app/services/health.py`
+- `app/api/routes/health.py`
+
+Health reports:
 
 - app status
 - database status
@@ -862,7 +1072,6 @@ Health endpoints report:
 - LLM provider
 - reranker model name
 - reranker loaded/cached flags
-- reranker availability
 - upload directory
 - free disk space
 - Chroma collection
@@ -870,106 +1079,318 @@ Health endpoints report:
 - pending jobs
 - ready flag
 
-Logging includes:
+Logging:
 
 - request latency
 - request ID
 - endpoint
-- source ID/job ID when available
+- source ID/job ID where available
 - retrieval strategy
 - number of sources
-- stack trace for errors
+- stack traces on errors
 
-Secrets and full document content are not logged.
+Secrets and full document content should not be logged.
 
-## 24. Current Production Boundaries
+## 25. Docker Deployment
 
-What is production-ready baseline:
+Files:
 
-- Document metadata is not stored only in Chroma.
+- `Dockerfile`
+- `frontend/Dockerfile`
+- `frontend/nginx.conf`
+- `docker-compose.yml`
+- `deploy/docker.env.example`
+- `deploy/docker.env` local only
+
+Backend image:
+
+- base `python:3.11-slim`
+- installs Tesseract and language data
+- installs Python dependencies with retry/timeout and BuildKit pip cache
+- exposes port `8000`
+- starts Uvicorn
+
+Frontend image:
+
+- builds React with Node 22
+- serves `dist` with Nginx
+- proxies `/api/` to backend
+- exposes port `80`
+
+Compose services:
+
+- `backend`
+- `frontend`
+
+Compose ports:
+
+- backend: `8000:8000`
+- frontend: `8080:80`
+
+Compose volume:
+
+- `rag_data:/app/data`
+
+Persisted in `rag_data`:
+
+- metadata DB
+- embedding cache DB
+- Chroma data
+- raw uploads
+- Hugging Face model cache
+
+Normal local Docker commands:
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs -f backend
+```
+
+Do not run this unless intentionally deleting all local Docker data/model cache:
+
+```powershell
+docker compose down -v
+```
+
+## 26. CI/CD
+
+Files:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy-windows-runner.yml`
+- `.github/workflows/deploy-compose.yml`
+- `DEPLOYMENT.md`
+
+CI workflow:
+
+```text
+push / pull_request
+  |
+  +-- backend tests on GitHub-hosted Ubuntu
+  +-- frontend build on GitHub-hosted Ubuntu
+  +-- Docker image build test
+```
+
+Windows deploy workflow:
+
+```text
+push main/master or manual trigger
+  |
+  v
+GitHub Actions
+  |
+  v
+self-hosted Windows runner
+  |
+  v
+write deploy/docker.env from GitHub secret DOCKER_ENV
+  |
+  v
+docker compose build
+  |
+  v
+docker compose up -d
+  |
+  v
+check http://127.0.0.1:8000/health/ready
+```
+
+Current deploy runner:
+
+- runs on `[self-hosted, Windows]`
+- concurrency group: `windows-docker-compose-deploy`
+- `cancel-in-progress: true`
+
+Important:
+
+- GitHub Actions deploy updates the app on the Windows machine.
+- It does not create public hosting by itself.
+- Public access currently requires Cloudflare Tunnel or another public server/cloud.
+
+Optional SSH deploy workflow:
+
+- `.github/workflows/deploy-compose.yml`
+- prepared for a Docker Compose server reachable by SSH.
+
+## 27. Cloudflare Tunnel Demo
+
+Current public demo approach:
+
+```text
+Docker Compose app on local Windows
+  |
+  v
+cloudflared quick tunnel
+  |
+  v
+trycloudflare.com public URL
+```
+
+Quick tunnel command:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8080
+```
+
+Properties:
+
+- free
+- fast to demo
+- URL changes each run
+- terminal must stay open
+- Windows machine must stay on
+- Docker Desktop must stay running
+
+Named tunnel with custom domain:
+
+- possible with Cloudflare account and domain using Cloudflare DNS.
+- gives stable URL.
+- can run as Windows Service.
+- still requires local Windows machine to remain online unless backend is moved to cloud.
+
+## 28. Current Production Boundaries
+
+Production-ready baseline already implemented:
+
+- Document metadata is separate from vector DB.
 - Upload/indexing has job lifecycle.
-- Chat uses streaming and persistent session history.
+- Chat uses SSE streaming.
+- Chat history is persistent.
+- Runtime settings are persisted.
 - Source selection is explicit.
-- Citation preview works for PDF/text-like documents.
-- Best-source navigation opens the source document/page.
-- Retrieval fallback reduces false "not found" when `min_score` is too strict.
-- Runtime settings are persisted in SQLite and hydrated into frontend.
-- Model runtime status exposes cached/loaded state for embedding and reranker.
-- Follow-up questions can use recent chat history for retrieval and answer generation.
-- Tests cover core API/service flows.
+- Citation preview is structured.
+- Best-source navigation is supported.
+- Retrieval fallback reduces false no-context answers.
+- Conversation context supports simple follow-up questions.
+- Docker Compose deployment works.
+- GitHub Actions self-hosted deploy works.
 
 Known limitations:
 
-- SQLite is suitable for local/single-user baseline, not high-concurrency SaaS.
-- Background worker is local process/thread based.
-- File storage is local disk.
-- PDF preview does not yet store bounding boxes for exact highlight.
-- Authentication is local single-user baseline, not OAuth/multi-user yet.
-- Reranker is wired as an optional product chat feature, but disabled by default for latency.
-- Model download progress is not streamed to the UI yet; users should preload reranker from CLI.
-- Conversation rewrite is deterministic/rule-based, not LLM-based.
+- SQLite is local/single-user oriented.
+- ChromaDB is embedded/local.
+- Raw file storage is local disk.
+- Background worker is an in-process thread.
+- Public demo depends on local machine being online.
+- Auth is local single-user, not OAuth/multi-user.
+- Reranker is optional and disabled by default due CPU latency.
+- BGE-M3 CPU embedding is slow for large indexing jobs.
+- PDF preview does not have coordinate-level highlighting.
+- Model download progress is not streamed to UI.
 
-## 25. Upgrade Path
+## 29. Cloud-Native Migration Roadmap
 
-Current Docker baseline:
-
-- Backend container from root `Dockerfile`.
-- Frontend static container from `frontend/Dockerfile`.
-- Nginx inside frontend container serves React and proxies `/api` to backend.
-- `docker-compose.yml` runs `backend` and `frontend`.
-- Named volume `rag_data` persists:
-  - SQLite metadata DB
-  - embedding cache DB
-  - ChromaDB embedded data
-  - raw uploads
-  - Hugging Face model cache
-
-Current Docker command flow:
+Target cloud architecture under consideration:
 
 ```text
-copy deploy/docker.env.example -> deploy/docker.env
-set GEMINI_API_KEY
-docker compose build
+Frontend:    Cloudflare Pages
+Backend:     Hugging Face Spaces or another container host
+Vector DB:   Qdrant Cloud
+Metadata:    Supabase PostgreSQL
+Raw files:   Supabase Storage
+LLM:         Gemini
+```
+
+This is not implemented yet. Required code changes:
+
+1. Add `QdrantVectorStore`.
+   - Implement provider under `app/services/vectorstore/providers`.
+   - Add `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`.
+   - Keep `BaseVectorStore` contract stable.
+
+2. Add PostgreSQL metadata repository.
+   - Current repositories are SQLite-specific.
+   - Add SQLAlchemy/psycopg or separate Postgres repository implementation.
+   - Add migration tool such as Alembic.
+
+3. Add object storage provider.
+   - Replace local `raw_path` file assumption with storage locator.
+   - Add Supabase Storage/S3-compatible provider.
+   - Update document preview/download to read from storage provider.
+
+4. Split worker from API process.
+   - Replace in-memory queue with external queue.
+   - Candidate: Redis/RQ, Celery, Dramatiq.
+
+5. Build and push Docker images from CI.
+   - Current deploy builds images on the Windows machine.
+   - Better production flow:
+
+```text
+CI builds image
+  |
+  v
+push to registry
+  |
+  v
+deploy machine pulls image
+  |
+  v
 docker compose up -d
 ```
 
-CI/CD:
+6. Replace local auth.
+   - Add real users.
+   - Scope documents/chats/settings by user ID.
+   - Add OAuth or managed auth provider.
 
-- `.github/workflows/ci.yml` runs backend tests, frontend build and Docker image build.
-- `.github/workflows/deploy-windows-runner.yml` deploys to a Windows machine with Docker Desktop through a GitHub Actions self-hosted runner.
-- `.github/workflows/deploy-compose.yml` is an optional manual SSH deployment workflow for machines that run Docker Compose.
+Recommended migration order:
 
-Database note:
+```text
+1. Qdrant provider
+2. PostgreSQL metadata repository
+3. Storage provider
+4. Separate worker/queue
+5. Cloud backend deploy
+6. Cloud frontend deploy
+```
 
-- The deploy baseline still uses SQLite because the current repository layer is SQLite-specific.
-- PostgreSQL requires a repository/database migration phase, not only adding a Postgres container.
+## 30. Operational Runbook
 
-PostgreSQL:
+Local Docker:
 
-- Keep repository contracts.
-- Replace SQLite connection/repository internals.
-- Add Alembic migrations.
+```powershell
+cd D:\RAG-chatbot
+docker compose up -d
+docker compose ps
+```
 
-Redis/Celery/RQ:
+Logs:
 
-- Keep `IndexingService` and `IndexJobService`.
-- Replace local worker/queue implementation.
+```powershell
+docker compose logs -f backend
+```
 
-S3/Object Storage:
+Health:
 
-- Keep `raw_path` as storage locator.
-- Add storage provider interface.
-- Replace local disk save/delete logic.
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8080/api/v1/health
+```
 
-Auth/Multi-tenant:
+Public quick demo:
 
-- Use `owner` on documents and chat sessions.
-- Scope list/search/delete by user ID.
-- Add auth dependency at API layer.
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8080
+```
 
-Deployment:
+GitHub runner:
 
-- Backend container.
-- Frontend static build served by Nginx.
-- Persistent volumes for Chroma, SQLite/PostgreSQL and raw uploads.
-- Health checks for backend and worker.
+```powershell
+cd D:\RAG-chatbot\actions-runner
+.\run.cmd
+```
+
+If runner is installed as service:
+
+```powershell
+Get-Service actions.runner*
+```
+
+Preload reranker locally:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.preload_reranker --clean-incomplete
+```

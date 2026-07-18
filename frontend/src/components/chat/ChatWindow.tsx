@@ -6,10 +6,11 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { useDocuments } from "@/hooks/useDocuments";
 import { useChatSession, useCreateChatSession } from "@/hooks/useChat";
+import { useUpdateRuntimeSettings } from "@/hooks/useRuntimeSettings";
 import { sendChatMessage, streamChatMessage } from "@/api/chat";
 import { queryClient } from "@/services/queryClient";
 import { useChatStore } from "@/store/chatStore";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useSettingsStore, type RetrievalStrategy } from "@/store/settingsStore";
 import type { ChatResponse } from "@/types/api";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -108,6 +109,7 @@ export function ChatWindow() {
   const documents = useDocuments();
   const sessionHistory = useChatSession(activeSessionId);
   const createSession = useCreateChatSession();
+  const updateRuntimeSettings = useUpdateRuntimeSettings();
   const completedDocuments = useMemo(
     () => documents.data?.documents.filter((document) => document.status === "COMPLETED") ?? [],
     [documents.data?.documents],
@@ -292,18 +294,40 @@ export function ChatWindow() {
     clear();
   };
 
+  const setRetrievalStrategy = (retrievalStrategy: RetrievalStrategy) => {
+    settings.setRetrieval({ retrievalStrategy });
+    void updateRuntimeSettings.mutateAsync({ retrieval_strategy: retrievalStrategy });
+  };
+
+  const strategyLabel = settings.retrievalStrategy === "parent_child" ? "Parent-child" : "Dense";
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="font-semibold">Chat</h2>
           <p className="text-xs text-muted-foreground">
-            Parent-child retrieval · {selectedSourceIds.length}/{completedDocuments.length} source selected
+            {strategyLabel} retrieval · {selectedSourceIds.length}/{completedDocuments.length} source selected
           </p>
         </div>
-        <Button variant="secondary" onClick={clearChat} disabled={isStreaming}>
-          New chat
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Strategy</span>
+            <select
+              className="h-9 min-w-36 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+              value={settings.retrievalStrategy}
+              onChange={(event) => setRetrievalStrategy(event.target.value as RetrievalStrategy)}
+              disabled={isStreaming || updateRuntimeSettings.isPending}
+              title="Chọn chiến lược truy xuất cho câu hỏi tiếp theo"
+            >
+              <option value="parent_child">Parent-child</option>
+              <option value="dense">Dense</option>
+            </select>
+          </label>
+          <Button variant="secondary" onClick={clearChat} disabled={isStreaming}>
+            New chat
+          </Button>
+        </div>
       </div>
       <div ref={conversationViewport} className="flex-1 overflow-auto p-4">
         <div className="mx-auto max-w-4xl space-y-5">

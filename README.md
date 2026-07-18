@@ -44,7 +44,7 @@ RERANKER_MODEL="BAAI/bge-reranker-v2-m3"
 Retrieval fallback giúp tự thử lại với ngưỡng thấp hơn nếu lần đầu không tìm thấy context:
 
 ```env
-DEFAULT_MIN_SCORE=0.70
+DEFAULT_MIN_SCORE=0.76
 RETRIEVAL_FALLBACK_ENABLED=true
 RETRIEVAL_FALLBACK_MIN_SCORE=0.55
 ```
@@ -184,7 +184,126 @@ cd D:\RAG-chatbot\frontend
 npm run build
 ```
 
-## 7. CI/CD + Deploy
+## 7. Benchmark Retrieval
+
+Tạo dataset JSONL theo mẫu:
+
+```text
+benchmarks/sample_retrieval.jsonl
+```
+
+Chạy benchmark Dense và Parent-child trên vector store hiện tại:
+
+```powershell
+cd D:\RAG-chatbot
+.\.venv\Scripts\python.exe -m app.cli.benchmark `
+  --dataset benchmarks\sample_retrieval.jsonl `
+  --strategies parent_child,dense `
+  --top-k 3 `
+  --fetch-k 8 `
+  --min-score 0.76 `
+  --page-tolerance 1 `
+  --auto-source-filter `
+  --local-files-only `
+  --show-failures
+```
+
+Xuất report:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.benchmark `
+  --dataset benchmarks\sample_retrieval.jsonl `
+  --page-tolerance 1 `
+  --auto-source-filter `
+  --output-json data\benchmark\retrieval_report.json `
+  --output-md data\benchmark\retrieval_report.md `
+  --local-files-only
+```
+
+Metrics chính:
+
+- `recall@1/3/5/10`
+- `mrr`
+- `precision@k`
+- `citation`
+- `keywords`
+- `unanswerable`
+- `avg_latency`
+
+## 8. Benchmark End-to-End RAG
+
+Benchmark này chạy đầy đủ retrieval, context builder, Gemini và answer evaluation. Lệnh này tốn quota LLM, nên chạy thử `--limit` trước:
+
+```powershell
+cd D:\RAG-chatbot
+.\.venv\Scripts\python.exe -m app.cli.rag_benchmark `
+  --dataset benchmarks\sample_retrieval.jsonl `
+  --strategies parent_child `
+  --top-k 3 `
+  --fetch-k 8 `
+  --min-score 0.76 `
+  --auto-source-filter `
+  --temperature 0 `
+  --max-tokens 2048 `
+  --request-delay-seconds 13 `
+  --offset 0 `
+  --limit 5 `
+  --local-files-only `
+  --show-failures
+```
+
+Chạy theo batch 10 câu:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.rag_benchmark `
+  --dataset benchmarks\sample_retrieval.jsonl `
+  --strategies parent_child `
+  --top-k 3 `
+  --fetch-k 8 `
+  --min-score 0.76 `
+  --auto-source-filter `
+  --temperature 0 `
+  --max-tokens 2048 `
+  --request-delay-seconds 13 `
+  --offset 10 `
+  --limit 10 `
+  --local-files-only `
+  --show-failures
+```
+
+Chạy toàn bộ dataset và xuất report:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.cli.rag_benchmark `
+  --dataset benchmarks\sample_retrieval.jsonl `
+  --strategies parent_child `
+  --top-k 3 `
+  --fetch-k 8 `
+  --min-score 0.76 `
+  --auto-source-filter `
+  --temperature 0 `
+  --max-tokens 2048 `
+  --request-delay-seconds 13 `
+  --output-json data\benchmark\rag_report.json `
+  --output-md data\benchmark\rag_report.md `
+  --local-files-only `
+  --show-failures
+```
+
+Với Gemini free tier 5 requests/phút, 100 câu sẽ mất khoảng 22 phút trở lên. Nếu gặp 429, đợi khoảng 1 phút rồi chạy lại với `--request-delay-seconds 15`.
+
+Metrics chính:
+
+- `answer_acc`
+- `answer_keywords`
+- `citation`
+- `source_hit`
+- `unanswerable`
+- `retrieval_latency`
+- `llm_latency`
+- `total_latency`
+
+## 9. CI/CD + Deploy
 
 CI đã có tại:
 

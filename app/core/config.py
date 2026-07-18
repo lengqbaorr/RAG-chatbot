@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     default_retrieval_strategy: str = "parent_child"
     default_top_k: int = 3
     default_fetch_k: int = 8
-    default_min_score: float = 0.70
+    default_min_score: float = 0.76
     retrieval_fallback_min_score: float = 0.55
     retrieval_fallback_enabled: bool = True
     reranker_enabled: bool = False

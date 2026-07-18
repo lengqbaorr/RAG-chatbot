@@ -10,7 +10,7 @@ class ChatRequest(BaseModel):
     strategy: str = "parent_child"
     top_k: int = Field(default=3, ge=1, le=20)
     fetch_k: int | None = Field(default=None, ge=1, le=100)
-    min_score: float | None = Field(default=0.78, ge=0.0, le=1.0)
+    min_score: float | None = Field(default=0.76, ge=0.0, le=1.0)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=8192)
     model: str | None = Field(default=None, max_length=120)
