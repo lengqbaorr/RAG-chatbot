@@ -1,21 +1,24 @@
 # RAG Chatbot
 
-Ứng dụng RAG cá nhân gồm FastAPI backend và React frontend.
+A personal Retrieval-Augmented Generation (RAG) application with a FastAPI backend and a React frontend.
 
-Hỗ trợ upload và hỏi đáp trên PDF, DOCX, TXT, Markdown, URL/HTML và ảnh OCR.
+It supports document upload and question answering over PDF, DOCX, TXT, Markdown, URL/HTML, and OCR image files.
 
-## Yêu Cầu
+## Requirements
 
 - Python 3.11
 - Node.js 20+
 - Tesseract OCR
 - Gemini API key
-- Docker Desktop nếu chạy bằng Docker
+- Docker Desktop, optional
 
-## Cài Local
+## Local Setup
+
+Install the backend:
 
 ```powershell
-cd D:\RAG-chatbot
+git clone <your-repository-url>
+cd RAG-chatbot
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -23,37 +26,37 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Cập nhật `.env`:
+Update `.env`:
 
 ```env
 GEMINI_API_KEY=your_key_here
-TESSERACT_CMD="C:/Program Files/Tesseract-OCR/tesseract.exe"
+TESSERACT_CMD=path_to_tesseract_executable
 OCR_LANGUAGES="eng+vie"
 DEFAULT_MIN_SCORE=0.76
 AUTH_ENABLED=false
 ```
 
-Cài frontend:
+Install the frontend:
 
 ```powershell
-cd D:\RAG-chatbot\frontend
+cd frontend
 npm install
 Copy-Item .env.example .env
 ```
 
-`frontend/.env`:
+Update `frontend/.env`:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_AUTH_MODE=disabled
 ```
 
-## Chạy Local
+## Run Locally
 
 Terminal 1:
 
 ```powershell
-cd D:\RAG-chatbot
+cd RAG-chatbot
 .\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -61,44 +64,44 @@ cd D:\RAG-chatbot
 Terminal 2:
 
 ```powershell
-cd D:\RAG-chatbot\frontend
+cd RAG-chatbot\frontend
 npm run dev
 ```
 
-Mở:
+Open:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-## Chạy Docker
+## Run With Docker
 
 ```powershell
-cd D:\RAG-chatbot
+cd RAG-chatbot
 Copy-Item deploy\docker.env.example deploy\docker.env
 ```
 
-Cập nhật `deploy/docker.env`:
+Update `deploy/docker.env`:
 
 ```env
 GEMINI_API_KEY=your_key_here
 DEFAULT_MIN_SCORE=0.76
 ```
 
-Chạy:
+Build and start:
 
 ```powershell
 docker compose build
 docker compose up -d
 ```
 
-Mở:
+Open:
 
 ```text
 http://127.0.0.1:8080
 ```
 
-Lệnh hữu ích:
+Useful commands:
 
 ```powershell
 docker compose ps
@@ -106,81 +109,58 @@ docker compose logs -f backend
 docker compose down
 ```
 
-## Kiểm Tra
+## Health Check
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Swagger:
+API docs:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Test Và Build
+## Test And Build
+
+Backend tests:
 
 ```powershell
-cd D:\RAG-chatbot
+cd RAG-chatbot
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+Frontend build:
+
 ```powershell
-cd D:\RAG-chatbot\frontend
+cd RAG-chatbot\frontend
 npm run build
 ```
 
-## Benchmark Retrieval
+## Retrieval Benchmark
 
 ```powershell
-cd D:\RAG-chatbot
+cd RAG-chatbot
 .\.venv\Scripts\python.exe -m app.cli.benchmark --dataset benchmarks\sample_retrieval.jsonl --strategies parent_child,dense --top-k 3 --fetch-k 8 --min-score 0.76 --page-tolerance 1 --auto-source-filter --local-files-only --show-failures
 ```
 
-## Benchmark End-to-End RAG
+## End-to-End RAG Benchmark
 
-Chạy thử 5 câu:
+Run the first 5 questions:
 
 ```powershell
-cd D:\RAG-chatbot
+cd RAG-chatbot
 .\.venv\Scripts\python.exe -m app.cli.rag_benchmark --dataset benchmarks\sample_retrieval.jsonl --strategies parent_child --top-k 3 --fetch-k 8 --min-score 0.76 --auto-source-filter --temperature 0 --max-tokens 2048 --request-delay-seconds 13 --offset 0 --limit 5 --local-files-only --show-failures
 ```
 
-Chạy batch 10 câu tiếp theo:
+Run the next 10-question batch:
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.cli.rag_benchmark --dataset benchmarks\sample_retrieval.jsonl --strategies parent_child --top-k 3 --fetch-k 8 --min-score 0.76 --auto-source-filter --temperature 0 --max-tokens 2048 --request-delay-seconds 13 --offset 10 --limit 10 --local-files-only --show-failures
 ```
 
-Gemini free tier giới hạn request/phút. Nếu gặp `429`, tăng `--request-delay-seconds` lên `15` hoặc `20`.
-
-## Deploy Demo Bằng Cloudflare Tunnel
-
-Sau khi Docker đang chạy:
-
-```powershell
-cloudflared tunnel --url http://127.0.0.1:8080
-```
-
-Copy URL `trycloudflare.com` để demo.
-
-## CI/CD
-
-Workflow chính:
-
-```text
-.github/workflows/ci.yml
-.github/workflows/deploy-windows-runner.yml
-```
-
-Deploy Windows dùng GitHub self-hosted runner và Docker Compose. Secret cần có:
-
-```text
-DOCKER_ENV
-```
-
-`DOCKER_ENV` là nội dung của `deploy/docker.env`.
+Gemini free tier is rate-limited. If you get `429`, increase `--request-delay-seconds` to `15` or `20`.
 
 ## Demo
 
-[Xem video demo](./Demo.mp4)
+![RAG Chatbot Demo](./Demo.gif)
